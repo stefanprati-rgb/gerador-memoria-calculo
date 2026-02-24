@@ -30,9 +30,7 @@ else:
     base_file = st.sidebar.file_uploader("Upload: Base Geração (gd_gestao_cobranca.xlsx)", type=["xlsx"])
 
 template_file = "mc.xlsx"
-if os.path.exists(template_file):
-    st.sidebar.info("📄 Template Base do Sistema Ativo")
-else:
+if not os.path.exists(template_file):
     st.sidebar.error("❌ ERRO: Template 'mc.xlsx' não encontrado na raiz do sistema.")
     st.stop()
 
