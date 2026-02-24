@@ -1,0 +1,14 @@
+# Ignore environment and IDE files
+__pycache__/
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Project specific sensitive data
+data/
+*.xlsx
+!tests/*.xlsx
+try_generate.py
+*.json
+inspection_output.txt
