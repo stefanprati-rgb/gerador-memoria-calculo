@@ -22,6 +22,11 @@ class Orchestrator:
     def get_available_periods(self) -> List[str]:
         return self.reader.get_periods()
         
+    def count_filtered(self, selected_clients: List[str], selected_periods: List[str]) -> int:
+        """Retorna a contagem de registros filtrados sem gerar o Excel."""
+        filtered_df = self.reader.filter_data(selected_clients, selected_periods)
+        return len(filtered_df)
+
     def generate(self, selected_clients: List[str], selected_periods: List[str]) -> Optional[bytes]:
         """
         Filtra a base e gera o arquivo Excel com os dados mapeados.
