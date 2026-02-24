@@ -29,11 +29,12 @@ if os.path.exists(default_base_path):
 else:
     base_file = st.sidebar.file_uploader("Upload: Base Geração (gd_gestao_cobranca.xlsx)", type=["xlsx"])
 
-if os.path.exists(default_mc_path):
-    st.sidebar.success(f"Template local encontrado: `{default_mc_path}`")
-    template_file = default_mc_path
+template_file = "mc.xlsx"
+if os.path.exists(template_file):
+    st.sidebar.info("📄 Template Base do Sistema Ativo")
 else:
-    template_file = st.sidebar.file_uploader("Upload: Template MC (mc.xlsx)", type=["xlsx"])
+    st.sidebar.error("❌ ERRO: Template 'mc.xlsx' não encontrado na raiz do sistema.")
+    st.stop()
 
 # --- LÓGICA PRINCIPAL ---
 if base_file and template_file:
