@@ -41,24 +41,17 @@ if base_file and template_file:
             orch = Orchestrator(base_file, template_file)
             
         st.subheader("Configuração de Grupos de Emissão")
-        st.markdown("Crie grupos para definir quais clientes sairão juntos em uma planilha separada.")
+        st.markdown("Crie grupos para definir quais clientes e períodos sairão juntos em uma planilha separada.")
         
         available_periods = orch.get_available_periods()
         available_clients = orch.get_available_clients()
-        
-        # Mês é universal para a geração
-        selected_period = st.selectbox(
-            "Mês de Referência Global", 
-            options=[""] + available_periods,
-            help="Selecione o Mês e Ano de referência para gerar as faturas."
-        )
         
         st.markdown("---")
         
         # Gerenciamento de estado dos grupos
         if 'groups' not in st.session_state:
             # Inicializa com 1 grupo padrão
-            st.session_state.groups = [{"id": 1, "name": "Grupo_1", "clients": []}]
+            st.session_state.groups = [{"id": 1, "name": "Grupo_1", "clients": [], "periods": []}]
         if 'group_counter' not in st.session_state:
             st.session_state.group_counter = 1
             
@@ -67,7 +60,8 @@ if base_file and template_file:
             st.session_state.groups.append({
                 "id": st.session_state.group_counter, 
                 "name": f"Grupo_{st.session_state.group_counter}", 
-                "clients": []
+                "clients": [],
+                "periods": []
             })
             
         def remove_group(group_id):
@@ -93,63 +87,69 @@ if base_file and template_file:
                             remove_group(group['id'])
                             st.rerun()
 
-                # Atualiza a lista de clientes no state
-                group['clients'] = st.multiselect(
-                    "Clientes incluídos no arquivo:", 
-                    options=available_clients,
-                    default=group['clients'],
-                    key=f"clients_{group['id']}"
-                )
+                col_cli, col_per = st.columns(2)
+                with col_cli:
+                    # Atualiza a lista de clientes no state
+                    group['clients'] = st.multiselect(
+                        "Clientes:", 
+                        options=available_clients,
+                        default=group['clients'],
+                        key=f"clients_{group['id']}"
+                    )
+                with col_per:
+                    group['periods'] = st.multiselect(
+                        "Períodos de Referência:", 
+                        options=available_periods,
+                        default=group.get('periods', []),
+                        key=f"periods_{group['id']}"
+                    )
 
         st.button("➕ Adicionar Novo Grupo", on_click=add_group)
             
         st.markdown("---")
         
         if st.button("Gerar Planilhas Selecionadas", type="primary", use_container_width=True):
-            if not selected_period:
-                st.warning("Por favor, selecione um Mês de Referência Global.")
+            # Validar grupos vazios ou sem período
+            valid_groups = [g for g in st.session_state.groups if g['clients'] and g['periods']]
+            
+            if not valid_groups:
+                st.warning("É necessário que pelo menos um grupo tenha Clientes e Períodos selecionados.")
             else:
-                # Validar grupos vazios
-                valid_groups = {g['name']: g['clients'] for g in st.session_state.groups if g['clients']}
-                
-                if not valid_groups:
-                    st.warning("É necessário que pelo menos um grupo tenha clientes selecionados.")
-                else:
-                    with st.spinner("Processando planilhas..."):
+                with st.spinner("Processando planilhas..."):
+                    
+                    # Se houver apenas 1 grupo, gera o Excel direto
+                    if len(valid_groups) == 1:
+                        grp = valid_groups[0]
+                        excel_data = orch.generate(grp['clients'], grp['periods'])
                         
-                        # Se houver apenas 1 grupo, gera o Excel direto
-                        if len(valid_groups) == 1:
-                            group_name, clients = list(valid_groups.items())[0]
-                            excel_data = orch.generate(clients, selected_period)
+                        if excel_data:
+                            safe_name = "".join([c if c.isalnum() else "_" for c in grp['name']])
+                            filename = f"{safe_name}.xlsx"
                             
-                            if excel_data:
-                                safe_name = "".join([c if c.isalnum() else "_" for c in group_name])
-                                filename = f"MC_{safe_name}_{selected_period}.xlsx"
-                                
-                                st.success("Planilha gerada com sucesso!")
-                                st.download_button(
-                                    label="📥 Baixar Arquivo Gerado",
-                                    data=excel_data,
-                                    file_name=filename,
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                                )
-                            else:
-                                st.warning("Nenhum dado encontrado para gerar a planilha.")
-                                
-                        # Se houver múltiplos grupos, empacota em zip
+                            st.success("Planilha gerada com sucesso!")
+                            st.download_button(
+                                label="📥 Baixar Arquivo Gerado",
+                                data=excel_data,
+                                file_name=filename,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
                         else:
-                            zip_data = orch.generate_multiple(valid_groups, selected_period)
+                            st.warning("Nenhum dado encontrado para gerar a planilha com os filtros aplicados.")
                             
-                            if zip_data:
-                                st.success(f"{len(valid_groups)} planilhas geradas e empacotadas com sucesso!")
-                                st.download_button(
-                                    label="📦 Baixar Lote (ZIP)",
-                                    data=zip_data,
-                                    file_name=f"Memoria_De_Calculo_Lote_{selected_period}.zip",
-                                    mime="application/zip"
-                                )
-                            else:
-                                st.warning("Nenhum dado encontrado para gerar as planilhas.")
+                    # Se houver múltiplos grupos, empacota em zip
+                    else:
+                        zip_data = orch.generate_multiple(valid_groups)
+                        
+                        if zip_data:
+                            st.success(f"{len(valid_groups)} planilhas geradas e empacotadas com sucesso!")
+                            st.download_button(
+                                label="📦 Baixar Lote (ZIP)",
+                                data=zip_data,
+                                file_name="Memoria_De_Calculo_Lote.zip",
+                                mime="application/zip"
+                            )
+                        else:
+                            st.warning("Nenhum dado encontrado para gerar as planilhas com os filtros aplicados.")
                         
     except Exception as e:
         st.error(f"Erro ao processar as planilhas: {str(e)}")

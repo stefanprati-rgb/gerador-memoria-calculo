@@ -23,15 +23,15 @@ class BaseExcelReader:
         periods = self.df[col].dropna().unique().tolist()
         return sorted([str(p) for p in periods])
 
-    def filter_data(self, clients: List[str], period: str) -> pd.DataFrame:
-        """Filtra o DataFrame pelos clientes e período especificados."""
+    def filter_data(self, clients: List[str], periods: List[str]) -> pd.DataFrame:
+        """Filtra o DataFrame pelos clientes e períodos especificados."""
         mask = pd.Series(True, index=self.df.index)
         
         if clients:
             mask = mask & (self.df['Nome'].isin(clients))
             
-        if period:
-            mask = mask & (self.df['Mês de Referência'] == period)
+        if periods:
+            mask = mask & (self.df['Mês de Referência'].isin(periods))
             
         return self.df[mask].copy()
 

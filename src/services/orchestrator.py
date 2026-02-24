@@ -16,11 +16,11 @@ class Orchestrator:
     def get_available_periods(self) -> List[str]:
         return self.reader.get_periods()
         
-    def generate(self, selected_clients: List[str], selected_period: str) -> Optional[bytes]:
+    def generate(self, selected_clients: List[str], selected_periods: List[str]) -> Optional[bytes]:
         """
         Filtra a base e gera o arquivo Excel com os dados mapeados.
         """
-        filtered_df = self.reader.filter_data(selected_clients, selected_period)
+        filtered_df = self.reader.filter_data(selected_clients, selected_periods)
         
         if filtered_df.empty:
             return None
@@ -30,9 +30,9 @@ class Orchestrator:
         
         return excel_bytes
 
-    def generate_multiple(self, groups: Dict[str, List[str]], selected_period: str) -> Optional[bytes]:
+    def generate_multiple(self, groups: List[Dict[str, Any]]) -> Optional[bytes]:
         """
-        Recebe um dicionário onde a chave é o nome do arquivo desejado e o valor é a lista de clientes.
+        Recebe uma lista de dicionários com chaves 'name', 'clients' (List[str]), e 'periods' (List[str]).
         Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados.
         Retorna None se nenhum arquivo puder ser gerado.
         """
@@ -43,11 +43,15 @@ class Orchestrator:
         generated_count = 0
         
         with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-            for group_name, clients in groups.items():
-                if not clients:
-                    continue # Grupo vazio não gera arquivo
+            for group in groups:
+                group_name = group.get('name', 'Sem_Nome')
+                clients = group.get('clients', [])
+                periods = group.get('periods', [])
+                
+                if not clients or not periods:
+                    continue # Grupo incompleto não gera arquivo
                     
-                excel_bytes = self.generate(clients, selected_period)
+                excel_bytes = self.generate(clients, periods)
                 if excel_bytes:
                     # Garante a extensão xlsx
                     filename = group_name if group_name.endswith(".xlsx") else f"{group_name}.xlsx"
