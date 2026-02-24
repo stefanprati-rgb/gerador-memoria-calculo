@@ -11,7 +11,7 @@ COLUMN_MAPPING = {
     "Distribuidora": "Distribuidora",
     "Crédito kWh": "Energia compensada pela Raízen (kWh)",
     "Tipo Contrato": "Regra aplicada",
-    "Vencimento": "Vencimento ",
+    "Vencimento": "Vencimento",
     "Status": "Status financeiro",
     "Valor da cobrança R$": "Boleto faturado (R$)",
     "Tarifa aplicada R$": "Tafira Distribuidora",

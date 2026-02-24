@@ -1,6 +1,13 @@
 import streamlit as st
 import os
+import glob
+from config.settings import settings
+from src.core.logging_config import setup_logging
 from src.services.orchestrator import Orchestrator
+from src.adapters.excel_adapter import ColumnValidationError
+
+# Inicializar logging
+setup_logging(settings.log_level)
 
 # Configuração da página
 st.set_page_config(
@@ -15,21 +22,25 @@ st.markdown("Automatize a geração de MC a partir da base Geração GD e Templa
 # --- BARRA LATERAL ---
 st.sidebar.header("📁 Arquivos")
 
-# Para o Streamlit Cloud, permitiremos o upload. Mas localmente podemos pré-carregar
-# se estiver na pasta, para agilizar testes.
-default_base_path = "gd_gestao_cobranca-1771957245_2026-02-24.xlsx"
-default_mc_path = "mc.xlsx"
-
+# Detecção automática do arquivo base via glob
 base_file = None
 template_file = None
 
-if os.path.exists(default_base_path):
-    st.sidebar.success(f"Base local encontrada: `{default_base_path}`")
-    base_file = default_base_path
+base_matches = sorted(glob.glob(settings.base_file_pattern), reverse=True)
+if base_matches:
+    if len(base_matches) == 1:
+        base_file = base_matches[0]
+        st.sidebar.success(f"Base local encontrada: `{base_file}`")
+    else:
+        base_file = st.sidebar.selectbox(
+            "Múltiplas bases encontradas — escolha uma:",
+            options=base_matches,
+            index=0
+        )
 else:
     base_file = st.sidebar.file_uploader("Upload: Base Geração (gd_gestao_cobranca.xlsx)", type=["xlsx"])
 
-template_file = "mc.xlsx"
+template_file = settings.template_file
 if not os.path.exists(template_file):
     st.sidebar.error("❌ ERRO: Template 'mc.xlsx' não encontrado na raiz do sistema.")
     st.stop()
@@ -150,8 +161,14 @@ if base_file and template_file:
                             )
                         else:
                             st.warning("Nenhum dado encontrado para gerar as planilhas com os filtros aplicados.")
-                        
+
+    except ColumnValidationError as e:
+        st.error(f"⚠️ Problema nas colunas da planilha: {e}")
+    except FileNotFoundError as e:
+        st.error(f"📁 Arquivo não encontrado: {e}")
+    except ValueError as e:
+        st.error(f"📊 Problema nos dados da planilha: {e}")
     except Exception as e:
-        st.error(f"Erro ao processar as planilhas: {str(e)}")
+        st.error(f"❌ Erro inesperado: {str(e)}")
 else:
     st.info("Por favor, garanta que tanto a Base quanto o Template foram providenciados na barra lateral.")

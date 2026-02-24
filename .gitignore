@@ -10,6 +10,10 @@ data/
 *.xlsx
 !tests/*.xlsx
 !mc.xlsx
-try_generate.py
-*.json
+
+# Artefatos de desenvolvimento
+scripts/try_generate.py
+scripts/inspect_excel.py
+scripts/export_cols.py
+cols.json
 inspection_output.txt
