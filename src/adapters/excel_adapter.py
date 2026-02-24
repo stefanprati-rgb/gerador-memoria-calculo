@@ -77,6 +77,8 @@ class TemplateExcelWriter:
             pass
             
         current_row = start_row
+        from copy import copy
+        
         for _, row in data_to_insert.iterrows():
             for base_col, template_col in column_mapping.items():
                 if base_col in row and template_col in template_headers:
@@ -85,7 +87,20 @@ class TemplateExcelWriter:
                     # Handle NaNs
                     if pd.isna(val):
                         val = None
-                    ws.cell(row=current_row, column=col_idx, value=val)
+                    
+                    new_cell = ws.cell(row=current_row, column=col_idx, value=val)
+                    
+                    # Copiar a formatação da linha 2 (referência do template) para as novas linhas
+                    if current_row > 2:
+                        ref_cell = ws.cell(row=2, column=col_idx)
+                        if ref_cell.has_style:
+                            new_cell.font = copy(ref_cell.font)
+                            new_cell.border = copy(ref_cell.border)
+                            new_cell.fill = copy(ref_cell.fill)
+                            new_cell.number_format = copy(ref_cell.number_format)
+                            new_cell.protection = copy(ref_cell.protection)
+                            new_cell.alignment = copy(ref_cell.alignment)
+
             current_row += 1
             
         output = io.BytesIO()
