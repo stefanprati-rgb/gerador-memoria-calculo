@@ -1,5 +1,5 @@
-from src.adapters.excel_adapter import BaseExcelReader, TemplateExcelWriter
-from src.core.mapping import COLUMN_MAPPING
+from logic.adapters.excel_adapter import BaseExcelReader, TemplateExcelWriter
+from logic.core.mapping import COLUMN_MAPPING
 import pandas as pd
 from typing import Any, List, Optional, Dict
 

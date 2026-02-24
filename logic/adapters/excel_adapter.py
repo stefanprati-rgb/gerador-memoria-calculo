@@ -1,6 +1,6 @@
 import pandas as pd
 from typing import List, Dict, Any
-from src.core.mapping import get_base_columns
+from logic.core.mapping import get_base_columns
 
 import logging
 
