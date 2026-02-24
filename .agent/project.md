@@ -38,4 +38,4 @@ automação / web app (Streamlit)
 - **Produção**: Hospedado no GitHub, rodando localmente.
 
 ## Notas Adicionais
-O projeto usará a arquitetura em módulos organizados em `./src`, separando UI das regras de manipulação das planilhas para garantir testabilidade.
+O projeto usará a arquitetura em módulos organizados em `./logic`, separando UI das regras de manipulação das planilhas para garantir testabilidade.

@@ -2,7 +2,7 @@
 Testes para o módulo de mapeamento de colunas.
 """
 
-from src.core.mapping import COLUMN_MAPPING, get_base_columns, get_template_columns
+from logic.core.mapping import COLUMN_MAPPING, get_base_columns, get_template_columns
 
 
 class TestMapping:

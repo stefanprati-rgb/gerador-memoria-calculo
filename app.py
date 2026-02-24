@@ -2,9 +2,9 @@ import streamlit as st
 import os
 import glob
 from config.settings import settings
-from src.core.logging_config import setup_logging
-from src.services.orchestrator import Orchestrator
-from src.adapters.excel_adapter import ColumnValidationError
+from logic.core.logging_config import setup_logging
+from logic.services.orchestrator import Orchestrator
+from logic.adapters.excel_adapter import ColumnValidationError
 
 # Inicializar logging
 setup_logging(settings.log_level)

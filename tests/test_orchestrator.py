@@ -6,7 +6,7 @@ import pytest
 import zipfile
 import io
 
-from src.services.orchestrator import Orchestrator
+from logic.services.orchestrator import Orchestrator
 
 
 class TestOrchestrator:

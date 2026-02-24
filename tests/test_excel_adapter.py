@@ -7,8 +7,8 @@ import pandas as pd
 import openpyxl
 import io
 
-from src.adapters.excel_adapter import BaseExcelReader, TemplateExcelWriter, ColumnValidationError
-from src.core.mapping import COLUMN_MAPPING
+from logic.adapters.excel_adapter import BaseExcelReader, TemplateExcelWriter, ColumnValidationError
+from logic.core.mapping import COLUMN_MAPPING
 
 
 class TestBaseExcelReader:
