@@ -1,7 +1,7 @@
 from src.adapters.excel_adapter import BaseExcelReader, TemplateExcelWriter
 from src.core.mapping import COLUMN_MAPPING
 import pandas as pd
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
 
 class Orchestrator:
     """Serviço central para orquestrar a geração de planilhas."""
@@ -29,3 +29,32 @@ class Orchestrator:
         excel_bytes = writer.generate_bytes(filtered_df, COLUMN_MAPPING)
         
         return excel_bytes
+
+    def generate_multiple(self, groups: Dict[str, List[str]], selected_period: str) -> Optional[bytes]:
+        """
+        Recebe um dicionário onde a chave é o nome do arquivo desejado e o valor é a lista de clientes.
+        Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados.
+        Retorna None se nenhum arquivo puder ser gerado.
+        """
+        import zipfile
+        import io
+        
+        zip_buffer = io.BytesIO()
+        generated_count = 0
+        
+        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            for group_name, clients in groups.items():
+                if not clients:
+                    continue # Grupo vazio não gera arquivo
+                    
+                excel_bytes = self.generate(clients, selected_period)
+                if excel_bytes:
+                    # Garante a extensão xlsx
+                    filename = group_name if group_name.endswith(".xlsx") else f"{group_name}.xlsx"
+                    zip_file.writestr(filename, excel_bytes)
+                    generated_count += 1
+                    
+        if generated_count == 0:
+            return None
+            
+        return zip_buffer.getvalue()
