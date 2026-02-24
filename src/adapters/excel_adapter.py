@@ -1,12 +1,40 @@
 import pandas as pd
 from typing import List, Dict, Any
+from src.core.mapping import get_base_columns
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class ColumnValidationError(Exception):
+    """Erro levantado quando colunas obrigatórias não são encontradas na planilha base."""
+    pass
+
 
 class BaseExcelReader:
     """Adaptador para leitura da planilha gd_gestao_cobranca."""
     
     def __init__(self, file_path_or_buffer: Any):
-        """Inicializa o leitor e já carrega o DataFrame. Suporta string(path) ou UploadedFile."""
+        """Inicializa o leitor, carrega o DataFrame e valida as colunas. Suporta string(path) ou UploadedFile."""
         self.df = pd.read_excel(file_path_or_buffer)
+        self._normalize_columns()
+        self._validate_columns()
+        logger.info("Base carregada com %d registros e %d colunas.", len(self.df), len(self.df.columns))
+
+    def _normalize_columns(self):
+        """Remove espaços extras dos nomes de colunas para evitar falhas por diferenças mínimas."""
+        self.df.columns = self.df.columns.str.strip()
+    
+    def _validate_columns(self):
+        """Valida se todas as colunas esperadas pelo mapeamento estão presentes na base."""
+        expected = get_base_columns()
+        missing = [c for c in expected if c not in self.df.columns]
+        if missing:
+            raise ColumnValidationError(
+                f"Colunas obrigatórias ausentes na planilha base: {missing}. "
+                f"Colunas encontradas: {list(self.df.columns)}"
+            )
         
     def get_clients(self) -> List[str]:
         """Retorna lista de clientes (Nome) únicos na base, ordenados."""
@@ -33,7 +61,10 @@ class BaseExcelReader:
         if periods:
             mask = mask & (self.df['Mês de Referência'].isin(periods))
             
-        return self.df[mask].copy()
+        filtered = self.df[mask].copy()
+        logger.info("Filtro aplicado: %d clientes, %d períodos → %d registros.", len(clients), len(periods), len(filtered))
+        return filtered
+
 
 class TemplateExcelWriter:
     """Adaptador para escrever dados no template mc.xlsx."""
@@ -44,47 +75,42 @@ class TemplateExcelWriter:
     def generate_bytes(self, data_to_insert: pd.DataFrame, column_mapping: Dict[str, str]) -> bytes:
         """
         Lê o template, insere as linhas filtradas e retorna os bytes do Excel gerado.
-        Ideal para Streamlit não precisar salvar em disco.
+        Normaliza os headers do template (strip) para garantir correspondência.
         """
         import io
         import openpyxl
+        from copy import copy
         
-        # Load the template workbook
+        # Carregar o template
         wb = openpyxl.load_workbook(self.template_source)
-        
-        # Assume writing to the first active sheet
         ws = wb.active
         
-        # Find the header row in template
-        # Usually it's row 1, but we should find the column indexes
+        # Encontrar os headers na linha 1, aplicando strip para normalizar
         header_row_idx = 1
-        template_headers = {cell.value: idx for idx, cell in enumerate(ws[header_row_idx], 1) if cell.value}
+        template_headers = {}
+        for idx, cell in enumerate(ws[header_row_idx], 1):
+            if cell.value:
+                normalized = str(cell.value).strip()
+                template_headers[normalized] = idx
         
-        # Determine the next empty row
+        # Determinar a próxima linha vazia para inserir dados
         start_row = ws.max_row + 1
         
-        # Se for o template original com openpyxl e ele tiver muito pouca coisa, max_row costuma ser 2
-        # É seguro escrever iterando pelas rows geradas.
+        # Se o template tem pouca coisa, começar na linha 2
         if start_row <= 2 and ws.cell(row=2, column=1).value is None:
-            # Overwrite example rows if any
             start_row = 2
             
-        # Para cada linha do dataframe
-        for idx, row in data_to_insert.iterrows():
-            current_row = start_row + idx if isinstance(idx, int) else start_row
-            # Reset idx for writing (it might be the dataframe original index)
-            # So we use an explicit counter
-            pass
-            
         current_row = start_row
-        from copy import copy
         
         for _, row in data_to_insert.iterrows():
             for base_col, template_col in column_mapping.items():
-                if base_col in row and template_col in template_headers:
-                    col_idx = template_headers[template_col]
+                # Normalizar o nome da coluna destino para match
+                template_col_normalized = template_col.strip()
+                
+                if base_col in row and template_col_normalized in template_headers:
+                    col_idx = template_headers[template_col_normalized]
                     val = row[base_col]
-                    # Handle NaNs
+                    # Tratar NaNs
                     if pd.isna(val):
                         val = None
                     
@@ -102,6 +128,8 @@ class TemplateExcelWriter:
                             new_cell.alignment = copy(ref_cell.alignment)
 
             current_row += 1
+        
+        logger.info("Planilha gerada com %d linhas de dados.", current_row - start_row)
             
         output = io.BytesIO()
         wb.save(output)
