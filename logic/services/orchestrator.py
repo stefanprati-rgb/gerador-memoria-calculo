@@ -5,6 +5,7 @@ Suporta faturamento agrupado (Fatura Pai + UCs Filhas).
 from logic.adapters.excel_adapter import BaseExcelReader, TemplateExcelWriter
 from logic.core.mapping import (
     COLUMN_MAPPING,
+    ENRICHMENT_MAPPING,
     GROUPING_FLAG_COL,
     GROUPING_FLAG_VALUE,
     GROUPING_KEYS,
@@ -85,7 +86,12 @@ class Orchestrator:
         processed_df = self._apply_grouping(filtered_df)
 
         writer = TemplateExcelWriter(self.template_file)
-        excel_bytes = writer.generate_bytes(processed_df, COLUMN_MAPPING)
+        # Mesclar mapeamento obrigatório + colunas de enriquecimento que existirem no DF
+        full_mapping = dict(COLUMN_MAPPING)
+        for col, dest in ENRICHMENT_MAPPING.items():
+            if col in processed_df.columns:
+                full_mapping[col] = dest
+        excel_bytes = writer.generate_bytes(processed_df, full_mapping)
 
         logger.info("Planilha gerada com sucesso (%d bytes).", len(excel_bytes))
         return excel_bytes
