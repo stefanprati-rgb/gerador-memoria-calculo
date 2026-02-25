@@ -43,13 +43,17 @@ COLUMN_MAPPING = {
     "Distribuidora": "Distribuidora",
     "Cred. Consumido Raizen": "Energia compensada pela Raízen (kWh)",
     "Desconto Contratado": "Regra aplicada",
-    "Vencimento": "Vencimento",
     "Status Pos-Faturamento": "Status financeiro",
     "Boleto Raizen": "Boleto faturado (R$)",
     "Tarifa Raizen": "Tafira Distribuidora",
     "Custo c/ GD": "Custo com GD R$",
     "Custo s/ GD": "Custo sem GD R$",
     "Ganho total Padrão": "Economia (R$)",
+}
+
+# Colunas de enriquecimento (vêm do merge com gd_gestao, não existem no .xlsm puro)
+ENRICHMENT_MAPPING = {
+    "Vencimento": "Vencimento",
 }
 
 # Coluna usada para identificar clientes na interface (seleção por nome)
