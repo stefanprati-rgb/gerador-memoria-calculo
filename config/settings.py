@@ -10,13 +10,20 @@ class Settings(BaseSettings):
     """Configurações do projeto, carregáveis via .env ou variáveis de ambiente."""
 
     # Padrão glob para encontrar a planilha base automaticamente
-    base_file_pattern: str = "gd_gestao_cobranca*.xlsx"
+    base_file_pattern: str = "Balanco_Energetico*.xlsm"
+    
+    # Nome da aba a ser lida na planilha base
+    base_sheet_name: str = "Balanco Operacional"
     
     # Caminho do template de saída
     template_file: str = "mc.xlsx"
     
     # Nível de log (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     log_level: str = "INFO"
+
+    # Firebase
+    firebase_credentials_path: str = "firebase-credentials.json"
+    firebase_storage_bucket: str = "hube-energy.appspot.com" # Exemplo, o usuário vai sobrescrever no .env
 
     model_config = {
         "env_file": ".env",

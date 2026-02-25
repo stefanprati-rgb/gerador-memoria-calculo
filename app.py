@@ -5,7 +5,10 @@ import time
 from config.settings import settings
 from logic.core.logging_config import setup_logging
 from logic.services.orchestrator import Orchestrator
-from logic.adapters.excel_adapter import ColumnValidationError
+from logic.adapters.excel_adapter import ColumnValidationError, HeaderNotFoundError
+
+from logic.services.sync_service import PARQUET_FILE, get_cache_update_time, build_consolidated_cache, BALANCO_REMOTE, GESTAO_REMOTE
+from logic.adapters.firebase_adapter import FirebaseAdapter
 
 # Inicializar logging
 setup_logging(settings.log_level)
@@ -130,30 +133,57 @@ st.markdown("""
 st.markdown("""
 <div class="main-header">
     <h1>⚡ Gerador de Memória de Cálculo</h1>
-    <p>Automatize a geração de MC a partir da base Geração GD e Template de Destino</p>
+    <p>Automatize a geração de MC a partir da base Balanço Energético e Template de Destino</p>
 </div>
 """, unsafe_allow_html=True)
 
 # --- BARRA LATERAL ---
 st.sidebar.header("📁 Arquivos")
 
-# Detecção automática do arquivo base via glob
-base_file = None
-template_file = None
+# --- ÁREA ADMINISTRATIVA ---
+with st.sidebar.expander("⚙️ Atualizar Bases (Admin)", expanded=False):
+    admin_senha = st.text_input("Senha Admin", type="password")
+    if admin_senha == "admin123":
+        st.markdown("**1. Carregue as planilhas atualizadas:**")
+        balanco_up = st.file_uploader("Balanço Energético (.xlsm)", type=["xlsm", "xlsx"])
+        gestao_up = st.file_uploader("Gestão Cobrança (.xlsx)", type=["xlsx"])
+        
+        if st.button("Sincronizar e Processar", use_container_width=True):
+            if balanco_up and gestao_up:
+                with st.spinner("Enviando para Firebase e cruzando dados. Isso pode levar alguns minutos..."):
+                    fb = FirebaseAdapter(settings.firebase_credentials_path, settings.firebase_storage_bucket)
+                    if fb._app is None:
+                        st.error("Falha ao inicializar conexão com Firebase. Verifique firebase-credentials.json.")
+                    else:
+                        # Upload para a nuvem
+                        fb.upload_file(balanco_up.getvalue(), BALANCO_REMOTE)
+                        fb.upload_file(gestao_up.getvalue(), GESTAO_REMOTE)
+                        
+                        # Processo de Download e Cruzamento (Gera o Parquet Local)
+                        if build_consolidated_cache(fb):
+                            st.cache_resource.clear()
+                            st.success("Bases sincronizadas com sucesso!")
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error("Erro interno ao gerar o cache consolidado.")
+            else:
+                st.warning("⚠️ Forneça as DUAS planilhas juntas para sincronizar.")
 
-base_matches = sorted(glob.glob(settings.base_file_pattern), reverse=True)
-if base_matches:
-    if len(base_matches) == 1:
-        base_file = base_matches[0]
-        st.sidebar.success(f"Base local encontrada: `{base_file}`")
-    else:
-        base_file = st.sidebar.selectbox(
-            "Múltiplas bases encontradas — escolha uma:",
-            options=base_matches,
-            index=0
-        )
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"**⚡ Status da Base Consolidada**  \nAtualizada em: `{get_cache_update_time()}`")
+
+# Determinar base ativa (Preferência total pelo Cloud Cache)
+if os.path.exists(PARQUET_FILE):
+    base_file = PARQUET_FILE
 else:
-    base_file = st.sidebar.file_uploader("Upload: Base Geração (gd_gestao_cobranca.xlsx)", type=["xlsx"])
+    # Fallback apenas para uso local/desenvolvimento
+    base_matches = sorted(glob.glob(settings.base_file_pattern), reverse=True)
+    base_file = base_matches[0] if base_matches else None
+    
+    if not base_file:
+        st.sidebar.error("Base Cacheada vazia. Acione a ⚙️ Área Administrativa.")
+        st.stop()
 
 template_file = settings.template_file
 if not os.path.exists(template_file):
@@ -161,10 +191,15 @@ if not os.path.exists(template_file):
     st.stop()
 
 # --- LÓGICA PRINCIPAL ---
+
+@st.cache_resource(show_spinner="Carregando base de dados...")
+def load_orchestrator(base_path: str, template_path: str, sheet: str):
+    """Cria o Orchestrator cacheado para evitar releitura da planilha em cada rerun."""
+    return Orchestrator(base_path, template_path, sheet_name=sheet)
+
 if base_file and template_file:
     try:
-        with st.spinner("Carregando base de dados..."):
-            orch = Orchestrator(base_file, template_file)
+        orch = load_orchestrator(base_file, template_file, settings.base_sheet_name)
             
         available_periods = orch.get_available_periods()
         available_clients = orch.get_available_clients()
@@ -363,6 +398,8 @@ if base_file and template_file:
                     else:
                         st.warning("Nenhum dado encontrado para gerar as planilhas com os filtros aplicados.")
 
+    except HeaderNotFoundError as e:
+        st.error(f"🔍 Não foi possível detectar o cabeçalho na planilha: {e}")
     except ColumnValidationError as e:
         st.error(f"⚠️ Problema nas colunas da planilha: {e}")
     except FileNotFoundError as e:

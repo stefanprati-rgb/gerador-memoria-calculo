@@ -1,0 +1,5 @@
+CPF/CNPJ: 30743538001200 | Ref: 2025-10-01 00:00:00 | Total: 1
+
+UC           RazaoSocial                    Excecao         Main   Faturar        Boleto        Ganho
+--------------------------------------------------------------------------------------------------------------
+15564        DELCI PEREIRA DA SILVA CIA L   -               Y      N                   -            -
