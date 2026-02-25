@@ -17,3 +17,14 @@ scripts/inspect_excel.py
 scripts/export_cols.py
 cols.json
 inspection_output.txt
+
+# Firebase e Integração Nuvem
+*.json
+!aba_cols.json
+!package.json
+!package-lock.json
+firebase-credentials.json
+.env
+*.xlsm
+*.parquet
+data/cache/

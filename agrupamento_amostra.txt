@@ -1,0 +1,23 @@
+Agrupamentos com Boleto preenchido: 2377
+
+
+--- CPF: 11137051059156 | Ref: 2025-12-01 00:00:00 | Total linhas: 1 ---
+UC           RazaoSocial                    Excecao         Main   Faturar        Boleto
+2657601      BOTICARIO PRODUTOS DE BELEZA   Agrupamento     Y      Y              736.31
+
+--- CPF: 11137051061304 | Ref: 2025-12-01 00:00:00 | Total linhas: 1 ---
+UC           RazaoSocial                    Excecao         Main   Faturar        Boleto
+2849273      BOTICARIO PRODUTOS DE BELEZA   Agrupamento     Y      Y             1007.68
+
+--- CPF: 11137051059822 | Ref: 2025-12-01 00:00:00 | Total linhas: 1 ---
+UC           RazaoSocial                    Excecao         Main   Faturar        Boleto
+3200814      BOTICARIO PRODUTOS DE BELEZA   Agrupamento     Y      Y             1151.02
+
+--- CPF: 11137051055835 | Ref: 2025-12-01 00:00:00 | Total linhas: 2 ---
+UC           RazaoSocial                    Excecao         Main   Faturar        Boleto
+4070060      BOTICARIO PRODUTOS DE BELEZA   Agrupamento     Y      Y              475.36
+4070061      BOTICARIO PRODUTOS DE BELEZA   Agrupamento     Y      Y              188.06
+
+--- CPF: 11137051059580 | Ref: 2025-12-01 00:00:00 | Total linhas: 1 ---
+UC           RazaoSocial                    Excecao         Main   Faturar        Boleto
+3205309      BOTICARIO PRODUTOS DE BELEZA   Agrupamento     Y      Y              869.24

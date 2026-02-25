@@ -1,0 +1,498 @@
+[
+  [
+    1,
+    "No. UC"
+  ],
+  [
+    2,
+    "id_uc_negociada"
+  ],
+  [
+    3,
+    "No. UC Antigo"
+  ],
+  [
+    4,
+    "No. Cliente"
+  ],
+  [
+    5,
+    "No. UC Att"
+  ],
+  [
+    6,
+    "No. IBM"
+  ],
+  [
+    7,
+    "Referencia"
+  ],
+  [
+    8,
+    "Main"
+  ],
+  [
+    9,
+    "Faturar"
+  ],
+  [
+    10,
+    "UC p Rateio"
+  ],
+  [
+    11,
+    "Geradora"
+  ],
+  [
+    12,
+    "Razao Social"
+  ],
+  [
+    13,
+    "CPF/CNPJ"
+  ],
+  [
+    14,
+    "Distribuidora"
+  ],
+  [
+    15,
+    "UF"
+  ],
+  [
+    16,
+    "Classe UC"
+  ],
+  [
+    17,
+    "Origem Dado"
+  ],
+  [
+    18,
+    "Tensao"
+  ],
+  [
+    19,
+    "Meses com Crédito consumido"
+  ],
+  [
+    20,
+    "Fraude Mapeada"
+  ],
+  [
+    21,
+    "Data Inicial Contrato"
+  ],
+  [
+    22,
+    "Fidelidade"
+  ],
+  [
+    23,
+    "Fidelidade Restante"
+  ],
+  [
+    24,
+    "Detrator"
+  ],
+  [
+    25,
+    "Detrator Obs"
+  ],
+  [
+    26,
+    "Status Cliente"
+  ],
+  [
+    27,
+    "Data Distrato"
+  ],
+  [
+    28,
+    "Dias Aviso Previo"
+  ],
+  [
+    29,
+    "Meses p/ Distrato Concluido"
+  ],
+  [
+    30,
+    "Distrato"
+  ],
+  [
+    31,
+    "Primeiro mes de compensação"
+  ],
+  [
+    32,
+    "No. Rateio"
+  ],
+  [
+    33,
+    "Rateio Calculado"
+  ],
+  [
+    34,
+    "Rateio Efetivo"
+  ],
+  [
+    35,
+    "Diferença Rateio"
+  ],
+  [
+    36,
+    "Percentual Acertividade do Rateio"
+  ],
+  [
+    37,
+    "Geração Usina (kWh) "
+  ],
+  [
+    38,
+    "Performance Alvo (kWh)"
+  ],
+  [
+    39,
+    "Disponibilidade (kWh)"
+  ],
+  [
+    40,
+    "Consumo (kWh)"
+  ],
+  [
+    41,
+    "Injeção Própria (kWh)"
+  ],
+  [
+    42,
+    "Cred. Consumido"
+  ],
+  [
+    43,
+    "Cred. Consumido Raizen"
+  ],
+  [
+    44,
+    "Cred. Acumulado"
+  ],
+  [
+    45,
+    "Imp. Som./Dim"
+  ],
+  [
+    46,
+    "Cred. Mes"
+  ],
+  [
+    47,
+    "Gerado UC"
+  ],
+  [
+    48,
+    "Gerado TUSD"
+  ],
+  [
+    49,
+    "Gerado TUSD Somado"
+  ],
+  [
+    50,
+    "Diferenca"
+  ],
+  [
+    51,
+    "Diferenca Acumulada"
+  ],
+  [
+    52,
+    "Energia Potencial P. Regra Contrato"
+  ],
+  [
+    53,
+    "Trf. Cheia Band."
+  ],
+  [
+    54,
+    "Trf. Cheia Verde"
+  ],
+  [
+    55,
+    "Trf.  Comp. Band."
+  ],
+  [
+    56,
+    "Trf. Comp. Verde"
+  ],
+  [
+    57,
+    "Outros Custos"
+  ],
+  [
+    58,
+    "Restituição (-) ou Parcela (+)"
+  ],
+  [
+    59,
+    "Saldo Prox. Mes"
+  ],
+  [
+    60,
+    "Fatura c/ GD"
+  ],
+  [
+    61,
+    "Fatura c/ GD e Restituicao"
+  ],
+  [
+    62,
+    "Fatura c/ GD Portal"
+  ],
+  [
+    63,
+    "Valor Custo Disponibilidade"
+  ],
+  [
+    64,
+    "Diferenca Fat. Dist"
+  ],
+  [
+    65,
+    "Gerado UC Confiavel"
+  ],
+  [
+    66,
+    "Fonte dos Dados"
+  ],
+  [
+    67,
+    "Analise Feita"
+  ],
+  [
+    68,
+    "Filtro Aux"
+  ],
+  [
+    69,
+    "x"
+  ],
+  [
+    70,
+    "Obs"
+  ],
+  [
+    71,
+    "Analise"
+  ],
+  [
+    72,
+    "Analise Faturamento"
+  ],
+  [
+    73,
+    "Analise Aux"
+  ],
+  [
+    74,
+    "Status de Pre-Faturamento"
+  ],
+  [
+    75,
+    "Nº DE CUPONS"
+  ],
+  [
+    76,
+    "Cupons Aplicados"
+  ],
+  [
+    77,
+    "Desconto C. Cupom"
+  ],
+  [
+    78,
+    "Desconto Contratado"
+  ],
+  [
+    79,
+    "Desconto Praticado"
+  ],
+  [
+    80,
+    "Tarifa Raizen"
+  ],
+  [
+    81,
+    "Volume Faturavel"
+  ],
+  [
+    82,
+    "Boleto Raizen"
+  ],
+  [
+    83,
+    "Dif. Boletos a cobrar"
+  ],
+  [
+    84,
+    "Boleto Raizen p/ Ref."
+  ],
+  [
+    85,
+    "Valor Enviado Emissão"
+  ],
+  [
+    86,
+    "Data Envio Emissão"
+  ],
+  [
+    87,
+    "Excecao Fat."
+  ],
+  [
+    88,
+    "Boleto Emitido Banco X"
+  ],
+  [
+    89,
+    "Status Pos-Faturamento"
+  ],
+  [
+    90,
+    "Fatura c/ GD Economia"
+  ],
+  [
+    91,
+    "Custo s/ GD"
+  ],
+  [
+    92,
+    "Custo c/ GD"
+  ],
+  [
+    93,
+    "Ganho total Padrão"
+  ],
+  [
+    94,
+    "Economia Acumulada"
+  ],
+  [
+    95,
+    "Data emissão Fatura Dist."
+  ],
+  [
+    96,
+    "Data aprovação Fatura"
+  ],
+  [
+    97,
+    "Tempo Emissão Fat."
+  ],
+  [
+    98,
+    "Data Ass. Cliente/ Hube Handover"
+  ],
+  [
+    99,
+    "Dias 1a Emissão"
+  ],
+  [
+    100,
+    "Trf. Cheia Band._ApenasReal"
+  ],
+  [
+    101,
+    "Trf. Cheia Verde_ApenasReal"
+  ],
+  [
+    102,
+    "Trf.  Comp. Band._ApenasReal"
+  ],
+  [
+    103,
+    "Trf. Comp. Verde_ApenasReal"
+  ],
+  [
+    104,
+    "Concat"
+  ],
+  [
+    105,
+    "Concat ID_UC"
+  ],
+  [
+    106,
+    "MD5"
+  ],
+  [
+    107,
+    "Rodar Macro"
+  ],
+  [
+    108,
+    "Colunas com Dados"
+  ],
+  [
+    109,
+    "Colunas sem Dados"
+  ],
+  [
+    110,
+    "Consumo (kWh)_Check"
+  ],
+  [
+    111,
+    "Cred. Consumido_Check"
+  ],
+  [
+    112,
+    "Injeção Própria (kWh)_Check"
+  ],
+  [
+    113,
+    "Cred. Acumulado_Check"
+  ],
+  [
+    114,
+    "Trf. Cheia Band._Check"
+  ],
+  [
+    115,
+    "Trf. Cheia Verde_Check"
+  ],
+  [
+    116,
+    "Trf.  Comp. Band._Check"
+  ],
+  [
+    117,
+    "Trf. Comp. Verde_Check"
+  ],
+  [
+    118,
+    "Outros Custos_Check"
+  ],
+  [
+    119,
+    "Restituição (-) ou Parcela (+)_Check"
+  ],
+  [
+    120,
+    "Saldo Prox. Mes_Check"
+  ],
+  [
+    121,
+    "Fatura c/ GD Portal_Check"
+  ],
+  [
+    122,
+    "Data emissão Fatura Dist._Check"
+  ],
+  [
+    123,
+    "Gerado UC_Check"
+  ],
+  [
+    124,
+    "x "
+  ]
+]
