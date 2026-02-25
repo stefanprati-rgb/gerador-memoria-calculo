@@ -7,7 +7,7 @@ from logic.core.logging_config import setup_logging
 from logic.services.orchestrator import Orchestrator
 from logic.adapters.excel_adapter import ColumnValidationError, HeaderNotFoundError
 
-from logic.services.sync_service import PARQUET_FILE, get_cache_update_time, build_consolidated_cache, BALANCO_REMOTE, GESTAO_REMOTE
+from logic.services.sync_service import PARQUET_FILE, get_cache_update_time, build_consolidated_cache_from_uploads
 from logic.adapters.firebase_adapter import FirebaseAdapter
 
 # Inicializar logging
@@ -149,26 +149,28 @@ with st.sidebar.expander("⚙️ Atualizar Bases (Admin)", expanded=False):
         gestao_up = st.file_uploader("Gestão Cobrança (.xlsx)", type=["xlsx"])
         
         if st.button("Sincronizar e Processar", use_container_width=True):
-            if balanco_up and gestao_up:
-                with st.spinner("Enviando para Firebase e cruzando dados. Isso pode levar alguns minutos..."):
-                    fb = FirebaseAdapter(settings.firebase_credentials_path, settings.firebase_storage_bucket)
-                    if fb._app is None:
-                        st.error("Falha ao inicializar conexão com Firebase. Verifique firebase-credentials.json.")
+            if balanco_up:
+                with st.spinner("Processando e cruzando dados. Isso pode levar alguns minutos..."):
+                    # Tentar inicializar Firebase para backup (opcional)
+                    fb = None
+                    try:
+                        fb = FirebaseAdapter(settings.firebase_credentials_path, settings.firebase_storage_bucket)
+                        if fb._app is None:
+                            fb = None
+                    except Exception:
+                        fb = None
+                    
+                    # Processar localmente (Local First) + backup opcional no Firebase
+                    gestao_bytes = gestao_up.getvalue() if gestao_up else None
+                    if build_consolidated_cache_from_uploads(balanco_up.getvalue(), gestao_bytes, fb):
+                        st.cache_resource.clear()
+                        st.success("✅ Bases processadas com sucesso!")
+                        time.sleep(2)
+                        st.rerun()
                     else:
-                        # Upload para a nuvem
-                        fb.upload_file(balanco_up.getvalue(), BALANCO_REMOTE)
-                        fb.upload_file(gestao_up.getvalue(), GESTAO_REMOTE)
-                        
-                        # Processo de Download e Cruzamento (Gera o Parquet Local)
-                        if build_consolidated_cache(fb):
-                            st.cache_resource.clear()
-                            st.success("Bases sincronizadas com sucesso!")
-                            time.sleep(2)
-                            st.rerun()
-                        else:
-                            st.error("Erro interno ao gerar o cache consolidado.")
+                        st.error("Erro interno ao gerar o cache consolidado. Verifique os logs.")
             else:
-                st.warning("⚠️ Forneça as DUAS planilhas juntas para sincronizar.")
+                st.warning("⚠️ O Balanço Energético (.xlsm) é obrigatório. A Gestão Cobrança (.xlsx) é opcional.")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"**⚡ Status da Base Consolidada**  \nAtualizada em: `{get_cache_update_time()}`")
