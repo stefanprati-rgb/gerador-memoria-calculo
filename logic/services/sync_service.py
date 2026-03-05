@@ -79,14 +79,27 @@ def build_consolidated_cache_from_uploads(balanco_bytes: bytes, gestao_bytes: by
             uc_col = header_map.get("instalação", header_map.get("uc", header_map.get("no. uc")))
             venc_col = header_map.get("vencimento", header_map.get("data de vencimento"))
             status_col = header_map.get("status", header_map.get("status financeiro"))
+            cancel_col = header_map.get("data de cancelamento")
 
             cols_to_read = []
             if uc_col: cols_to_read.append(uc_col)
             if venc_col: cols_to_read.append(venc_col)
             if status_col: cols_to_read.append(status_col)
+            if cancel_col: cols_to_read.append(cancel_col)
 
             if uc_col and (venc_col or status_col):
                 df_gestao = pd.read_excel(GESTAO_LOCAL, usecols=cols_to_read)
+
+                # Filtrar boletos cancelados (Data de Cancelamento preenchida com data real)
+                # A planilha usa "-" para indicar não-cancelado
+                if cancel_col and cancel_col in df_gestao.columns:
+                    antes = len(df_gestao)
+                    cancel_values = df_gestao[cancel_col].astype(str).str.strip()
+                    mask_not_cancelled = pd.isna(df_gestao[cancel_col]) | (cancel_values == "") | (cancel_values == "-") | (cancel_values == "nan")
+                    df_gestao = df_gestao[mask_not_cancelled]
+                    removidos = antes - len(df_gestao)
+                    logger.info("Boletos cancelados removidos: %d de %d registros.", removidos, antes)
+                    df_gestao = df_gestao.drop(columns=[cancel_col])
 
                 rename_dict = {uc_col: "No. UC"}
                 if venc_col: rename_dict[venc_col] = "Vencimento"
@@ -96,6 +109,9 @@ def build_consolidated_cache_from_uploads(balanco_bytes: bytes, gestao_bytes: by
 
                 df_consolidado["No. UC"] = df_consolidado["No. UC"].astype(str).str.strip()
                 df_gestao["No. UC"] = df_gestao["No. UC"].astype(str).str.strip()
+
+                # Deduplicar gestão por UC antes do merge para evitar explosão de linhas
+                df_gestao = df_gestao.drop_duplicates(subset=["No. UC"], keep="last")
 
                 logger.info("Realizando merge (cruzamento) de %d registros...", len(df_gestao))
                 df_consolidado = pd.merge(df_consolidado, df_gestao, on="No. UC", how="left")
@@ -112,7 +128,21 @@ def build_consolidated_cache_from_uploads(balanco_bytes: bytes, gestao_bytes: by
     else:
         logger.info("Base de Gestão não disponível. Seguindo sem Vencimento/Status extra.")
 
-    # 5. Salvar o Parquet consolidado
+    # 5. Corrigir colunas com dtype misto para evitar falha no Parquet
+    for col in df_consolidado.select_dtypes(include=["object"]).columns:
+        try:
+            converted = pd.to_numeric(df_consolidado[col], errors="coerce")
+            # Se >= 80% dos valores foram convertidos com sucesso, aceitar como numérico
+            if converted.notna().sum() >= 0.8 * df_consolidado[col].notna().sum():
+                df_consolidado[col] = converted
+                logger.debug("Coluna '%s' convertida de object para numérico.", col)
+                continue
+        except (ValueError, TypeError):
+            pass
+        # Colunas que continuam object: forçar string para evitar erro de encoding
+        df_consolidado[col] = df_consolidado[col].astype(str).replace("nan", pd.NA)
+
+    # 6. Salvar o Parquet consolidado
     try:
         df_consolidado.to_parquet(PARQUET_FILE, engine="fastparquet", index=False)
         logger.info("Cache consolidado salvo com sucesso: %s (%d registros)", PARQUET_FILE, len(df_consolidado))

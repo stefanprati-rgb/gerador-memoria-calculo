@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # Nível de log (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     log_level: str = "INFO"
 
+    # Senha de acesso ao painel administrativo
+    admin_password: str = "admin123"
+
     # Firebase
     firebase_credentials_path: str = "firebase-credentials.json"
     firebase_storage_bucket: str = "hube-energy.appspot.com" # Exemplo, o usuário vai sobrescrever no .env

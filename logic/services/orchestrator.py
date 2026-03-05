@@ -44,30 +44,65 @@ class Orchestrator:
         """
         Aplica a lógica de agrupamento de faturas.
         
-        A base já contém as Faturas Pai como linhas com Excecao Fat. = 'Agrupamento'.
-        Essas linhas já possuem os valores financeiros consolidados (Boleto, Ganho, etc.).
-        
-        Esta função apenas MARCA essas linhas com _is_parent=True para que o
-        TemplateExcelWriter aplique formatação diferenciada (negrito + fundo amarelo).
-        
-        Nenhuma linha extra é criada e nenhum valor é alterado.
+        Quando há UCs com Excecao Fat. = 'Agrupamento', cria UMA LINHA PAI que consolida 
+        (soma) as informações financeiras. A linha pai é colocada acima das linhas das UCs filhas.
         """
         if GROUPING_FLAG_COL not in df.columns:
             logger.info("Coluna '%s' não encontrada. Sem agrupamento.", GROUPING_FLAG_COL)
             df[PARENT_ROW_FLAG] = False
             return df
 
-        # Marcar linhas de Fatura Pai (Agrupamento) para destaque visual
-        mask_parent = df[GROUPING_FLAG_COL].astype(str).str.strip() == GROUPING_FLAG_VALUE
+        # Garantir que a flag existe inicialmente como False nas filhas
         df = df.copy()
-        df[PARENT_ROW_FLAG] = mask_parent
+        df[PARENT_ROW_FLAG] = False
 
-        parent_count = mask_parent.sum()
-        logger.info(
-            "Agrupamento: %d faturas pai identificadas de %d registros totais.",
-            parent_count, len(df),
-        )
+        if "Referencia" not in df.columns or CLIENT_COLUMN not in df.columns:
+            logger.warning("Faltam colunas de agrupamento. Seguindo sem agregar faturas.")
+            return df
 
+        grouped_dfs = []
+        parent_count = 0
+        
+        # Agrupar por Cliente, Período e Distribuidora
+        keys = [CLIENT_COLUMN, "Referencia"]
+        if "CPF/CNPJ" in df.columns: keys.append("CPF/CNPJ")
+        if "Distribuidora" in df.columns: keys.append("Distribuidora")
+        
+        # Preencher NA nas chaves temporariamente para o groupby não dropar
+        for k in keys:
+            if k in df.columns:
+                df[k] = df[k].fillna("N/A")
+
+        for group_keys, group_df in df.groupby(keys, sort=False):
+            # Verificar se ESSE GRUPO MERECE uma Fatura Pai:
+            # - Tem alguma UC com "Agrupamento"?
+            # - Tem mais de uma UC no grupo? (grupos de 1 não são agrupamentos reais)
+            mask_parent = group_df[GROUPING_FLAG_COL].astype(str).str.strip() == GROUPING_FLAG_VALUE
+            
+            if mask_parent.any() and len(group_df) > 1:
+                # CRIAR A FATURA PAI
+                parent_row = group_df.iloc[0].copy()
+                
+                # Modificar identificação
+                parent_row["No. UC"] = "Fatura Agrupada"
+                parent_row[PARENT_ROW_FLAG] = True
+                
+                # Somar as colunas financeiras (min_count=1 garante que se tudo for NaN, fica NaN)
+                for col in SUM_COLUMNS:
+                    if col in group_df.columns:
+                        parent_row[col] = pd.to_numeric(group_df[col], errors="coerce").sum(min_count=1)
+                
+                # Juntar a linha pai e as linhas filhas do grupo
+                grouped_dfs.append(pd.DataFrame([parent_row]))
+                grouped_dfs.append(group_df)
+                parent_count += 1
+            else:
+                grouped_dfs.append(group_df)
+
+        if grouped_dfs:
+            df = pd.concat(grouped_dfs, ignore_index=True)
+
+        logger.info("Agrupamento: %d faturas pai geradas. Total de linhas agora: %d.", parent_count, len(df))
         return df
 
     def generate(self, selected_clients: List[str], selected_periods: List[str]) -> Optional[bytes]:

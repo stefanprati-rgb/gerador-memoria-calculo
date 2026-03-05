@@ -59,71 +59,70 @@ class TestOrchestrator:
 
 
 class TestAgrupamento:
-    """Testes da identificação de Faturas Pai existentes na base."""
+    """Testes da geração da Fatura Pai (Agrupamento)."""
 
-    def test_identifica_fatura_pai(self, sample_base_xlsx, sample_template_xlsx):
-        """Linhas com Excecao Fat. = 'Agrupamento' devem ser marcadas como parent."""
+    def test_identifica_e_soma_fatura_pai(self, sample_base_xlsx, sample_template_xlsx):
+        """Quando há UCs com 'Agrupamento', deve criar UMA Fatura Pai que soma os valores e colocar as UCs filhas embaixo."""
         orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
         filtered = orch.reader.filter_data(["Cliente Gamma"], orch.get_available_periods())
-
+        
+        # Cliente Gamma tem 2 registros de Agrupamento
+        assert len(filtered) == 2
+        
         result = orch._apply_grouping(filtered)
 
-        # Gamma tem 2 UCs com Agrupamento — ambas marcadas como parent
-        parent_rows = result[result[PARENT_ROW_FLAG] == True]
-        assert len(parent_rows) == 2
-
-    def test_valores_preservados_sem_soma(self, sample_base_xlsx, sample_template_xlsx):
-        """Os valores financeiros NÃO devem ser somados — a base já traz o correto."""
-        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
-        filtered = orch.reader.filter_data(["Cliente Gamma"], orch.get_available_periods())
-
-        result = orch._apply_grouping(filtered)
-
-        # Nenhuma linha extra criada — mesmo número de registros
-        assert len(result) == len(filtered)
-
-        # Valores originais preservados
-        parent_rows = result[result[PARENT_ROW_FLAG] == True]
-        assert parent_rows.iloc[0]["Boleto Raizen"] == pytest.approx(200.00)
-        assert parent_rows.iloc[1]["Boleto Raizen"] == pytest.approx(180.00)
+        # Deve ter criado 1 linha extra (A Fatura Pai)
+        assert len(result) == 3
+        
+        # A primeira linha deve ser a Fatura Pai
+        parent_row = result.iloc[0]
+        assert parent_row[PARENT_ROW_FLAG] == True
+        assert parent_row["No. UC"] == "Fatura Agrupada"
+        
+        # A soma de Boleto Raizen deve ser a soma das duas filhas (200 + 180 = 380)
+        assert parent_row["Boleto Raizen"] == pytest.approx(380.00)
+        
+        # As linhas filhas devem vir depois e não ter a flag
+        assert result.iloc[1][PARENT_ROW_FLAG] == False
+        assert result.iloc[2][PARENT_ROW_FLAG] == False
 
     def test_nao_marca_sem_flag(self, sample_base_xlsx, sample_template_xlsx):
-        """Clientes sem Excecao Fat. = 'Agrupamento' não devem ter parent=True."""
+        """Clientes sem Excecao Fat. = 'Agrupamento' não devem gerar Fatura Pai."""
         orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
         filtered = orch.reader.filter_data(["Cliente Alpha"], orch.get_available_periods())
 
         result = orch._apply_grouping(filtered)
 
+        # Nenhuma Fatura Pai gerada
         parent_rows = result[result[PARENT_ROW_FLAG] == True]
         assert len(parent_rows) == 0
-        assert len(result) == 2
+        assert len(result) == len(filtered)  # O total de linhas permanece igual
 
     def test_uc_solitaria_com_agrupamento_marcada(self, sample_base_xlsx, sample_template_xlsx):
-        """UC solitária com 'Agrupamento' deve ser marcada como parent (a base já traz o valor certo)."""
+        """UC solitária com 'Agrupamento' NÃO deve gerar Fatura Pai (grupos exigem > 1 UC)."""
         orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
         filtered = orch.reader.filter_data(["Cliente Delta"], orch.get_available_periods())
 
         result = orch._apply_grouping(filtered)
 
-        # Delta tem flag Agrupamento — deve ser marcada como parent
         parent_rows = result[result[PARENT_ROW_FLAG] == True]
-        assert len(parent_rows) == 1
-        assert len(result) == 1
+        assert len(parent_rows) == 0  # Antes gerava 1, agora exige len > 1
+        assert len(result) == 1 # Apenas a UC original
 
     def test_misto_agrupamento_e_normal(self, sample_base_xlsx, sample_template_xlsx):
-        """Quando temos clientes com e sem agrupamento, ambos presentes sem linhas extras."""
+        """Clientes com e sem agrupamento processados juntos. Grupos len=1 ignorados."""
         orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
         all_clients = orch.get_available_clients()
         all_periods = orch.get_available_periods()
         filtered = orch.reader.filter_data(all_clients, all_periods)
 
+        original_len = len(filtered) # 6
         result = orch._apply_grouping(filtered)
 
-        # Nenhuma linha criada — total permanece igual
-        assert len(result) == len(filtered)
-        # 3 registros com Agrupamento (Gamma:2 + Delta:1)
+        # Criou Fatura Pai APENAS para Gamma (2 UCs). Delta tem 1 UC (ignorado).
         parent_rows = result[result[PARENT_ROW_FLAG] == True]
-        assert len(parent_rows) == 3
+        assert len(parent_rows) == 1
+        assert len(result) == original_len + 1
 
 
 class TestGenerateMultiple:
