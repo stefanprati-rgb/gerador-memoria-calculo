@@ -59,6 +59,11 @@ ENRICHMENT_MAPPING = {
 # Coluna usada para identificar clientes na interface (seleção por nome)
 CLIENT_COLUMN = "Razao Social"
 
+# Colunas que existem no mapping, mas cuja ausência na base original não impede o processamento
+OPTIONAL_BASE_COLUMNS = [
+    "Status Pos-Faturamento",
+]
+
 # Coluna usada para identificar períodos na interface
 PERIOD_COLUMN = "Referencia"
 
