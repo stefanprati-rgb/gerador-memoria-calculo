@@ -17,6 +17,9 @@ scripts/inspect_excel.py
 scripts/export_cols.py
 cols.json
 inspection_output.txt
+delci_output*.txt
+agrupamento_amostra.txt
+inspect_excel.py
 
 # Firebase e Integração Nuvem
 *.json
