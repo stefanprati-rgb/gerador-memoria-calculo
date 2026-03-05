@@ -17,6 +17,7 @@ from logic.core.mapping import (
     CLIENT_COLUMN,
     PERIOD_COLUMN,
     PARENT_ROW_FLAG,
+    OPTIONAL_BASE_COLUMNS,
 )
 
 import logging
@@ -137,7 +138,7 @@ class BaseExcelReader:
     def _validate_columns(self):
         """Valida se todas as colunas esperadas pelo mapeamento estão presentes na base."""
         expected = get_base_columns()
-        missing = [c for c in expected if c not in self.df.columns]
+        missing = [c for c in expected if c not in self.df.columns and c not in OPTIONAL_BASE_COLUMNS]
         if missing:
             raise ColumnValidationError(
                 f"Colunas obrigatórias ausentes na planilha base: {missing}. "
