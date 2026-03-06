@@ -36,22 +36,24 @@ CUSTOM_CSS = """
         font-weight: 300;
     }
 
-    /* Sidebar refinada */
+    /* Sidebar refinada - Adaptável ao tema */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #f0f4f8 0%, #e2e8f0 100%);
+        background-color: var(--secondary-background-color);
+        background-image: linear-gradient(180deg, var(--secondary-background-color) 0%, var(--background-color) 100%);
     }
     section[data-testid="stSidebar"] .stMetric {
-        background: white;
+        background: var(--background-color);
         padding: 0.7rem 1rem;
         border-radius: 8px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-        border-left: 3px solid #0f4c75;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        border-left: 3px solid #1b7fa3;
     }
 
-    /* Botão principal — gradiente verde/azul */
+    /* Botão principal — gradiente verde/azul (mantido para destaque) */
     div.stButton > button[kind="primary"] {
         background: linear-gradient(135deg, #0f4c75 0%, #00b4d8 100%) !important;
         border: none !important;
+        color: white !important;
         font-weight: 600 !important;
         letter-spacing: 0.02em;
         padding: 0.7rem 1.5rem !important;
@@ -87,12 +89,13 @@ CUSTOM_CSS = """
     /* Preview de registros */
     .record-preview {
         font-size: 0.82rem;
-        color: #64748b;
+        color: var(--text-color);
+        opacity: 0.8;
         padding: 0.3rem 0;
         font-weight: 400;
     }
     .record-preview strong {
-        color: #0f4c75;
+        color: #00b4d8;
         font-weight: 600;
     }
 
@@ -106,8 +109,9 @@ CUSTOM_CSS = """
     /* Separador suave */
     hr {
         border: none;
-        border-top: 1px solid #e2e8f0;
+        border-top: 1px solid var(--secondary-background-color);
         margin: 1.2rem 0;
+        opacity: 0.3;
     }
 </style>
 """
