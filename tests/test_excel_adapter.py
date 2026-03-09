@@ -136,7 +136,7 @@ class TestTemplateExcelWriter:
         ws = wb.active
 
         # Linha 2 = Fatura Pai (deve estar em negrito)
-        parent_cell = ws.cell(row=2, column=4)  # coluna Razão Social
+        parent_cell = ws.cell(row=2, column=4)  # coluna Razao Social
         assert parent_cell.value == "TOTAL AGRUPADO - Cliente Alpha"
         assert parent_cell.font.bold is True
 

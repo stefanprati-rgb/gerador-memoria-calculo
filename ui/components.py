@@ -42,6 +42,7 @@ def render_sidebar_metrics(available_clients: List[str], available_periods: List
     st.sidebar.metric("Registros Totais", f"{total_records:,}".replace(",", "."))
 
 
+@st.fragment
 def _render_group_card(group: dict, index: int, available_clients: List[str], available_periods: List[str], orch):
     """Renderiza um card individual de grupo com seleção de clientes e períodos."""
     has_clients = bool(group.get('clients'))
@@ -71,11 +72,9 @@ def _render_group_card(group: dict, index: int, available_clients: List[str], av
         with col_sel_all_cli:
             if st.button("✅ Selecionar Todos", key=f"all_cli_{group['id']}", use_container_width=True):
                 group['clients'] = list(available_clients)
-                st.rerun()
         with col_clear_cli:
             if st.button("🧹 Limpar", key=f"clear_cli_{group['id']}", use_container_width=True):
                 group['clients'] = []
-                st.rerun()
         
         group['clients'] = st.multiselect(
             "Clientes:", 
@@ -91,11 +90,9 @@ def _render_group_card(group: dict, index: int, available_clients: List[str], av
         with col_sel_all_per:
             if st.button("✅ Selecionar Todos", key=f"all_per_{group['id']}", use_container_width=True):
                 group['periods'] = list(available_periods)
-                st.rerun()
         with col_clear_per:
             if st.button("🧹 Limpar", key=f"clear_per_{group['id']}", use_container_width=True):
                 group['periods'] = []
-                st.rerun()
 
         group['periods'] = st.multiselect(
             "Períodos de Referência:", 

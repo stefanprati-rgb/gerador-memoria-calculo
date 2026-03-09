@@ -73,11 +73,11 @@ def sample_template_xlsx(tmp_path):
 
     # Headers do template (com espaços extras como no real para testar normalização)
     headers = [
-        "Data  Ref", "UC", "CNPJ", "Razão Social", "Distribuidora",
-        "Energia compensada pela Raízen (kWh)", "Regra aplicada",
-        "Vencimento ", "Status financeiro", "Boleto faturado (R$)",
-        "Tafira Distribuidora", "Custo com GD R$", "Custo sem GD R$",
-        "Economia (R$)"
+        "Referencia", "No. UC", "CPF/CNPJ", "Razao Social", "Distribuidora",
+        "Cred. Consumido Raizen", "Desconto Contratado",
+        "Vencimento", "Status Pos-Faturamento", "Boleto Raizen",
+        "Tarifa Raizen", "Custo c/ GD", "Custo s/ GD",
+        "Ganho total Padrão"
     ]
 
     for col_idx, header in enumerate(headers, 1):
