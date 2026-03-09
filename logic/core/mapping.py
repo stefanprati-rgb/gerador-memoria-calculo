@@ -35,20 +35,20 @@ PARENT_ROW_FLAG = "_is_parent"
 
 # --- MAPEAMENTO BASE → TEMPLATE ---
 COLUMN_MAPPING = {
-    # 'Coluna na base Balanço Energético': 'Coluna no template mc.xlsx'
-    "Referencia": "Data  Ref",
-    "No. UC": "UC",
-    "CPF/CNPJ": "CNPJ",
-    "Razao Social": "Razão Social",
+    # 'Coluna na base Balanço Energético': 'Coluna no destino'
+    "Referencia": "Referencia",
+    "No. UC": "No. UC",
+    "CPF/CNPJ": "CPF/CNPJ",
+    "Razao Social": "Razao Social",
     "Distribuidora": "Distribuidora",
-    "Cred. Consumido Raizen": "Energia compensada pela Raízen (kWh)",
-    "Desconto Contratado": "Regra aplicada",
-    "Status Pos-Faturamento": "Status financeiro",
-    "Boleto Raizen": "Boleto faturado (R$)",
-    "Tarifa Raizen": "Tafira Distribuidora",
-    "Custo c/ GD": "Custo com GD R$",
-    "Custo s/ GD": "Custo sem GD R$",
-    "Ganho total Padrão": "Economia (R$)",
+    "Cred. Consumido Raizen": "Cred. Consumido Raizen",
+    "Desconto Contratado": "Desconto Contratado",
+    "Status Pos-Faturamento": "Status Pos-Faturamento",
+    "Boleto Raizen": "Boleto Raizen",
+    "Tarifa Raizen": "Tarifa Raizen",
+    "Custo c/ GD": "Custo c/ GD",
+    "Custo s/ GD": "Custo s/ GD",
+    "Ganho total Padrão": "Ganho total Padrão",
 }
 
 # Colunas de enriquecimento (vêm do merge com gd_gestao, não existem no .xlsm puro)

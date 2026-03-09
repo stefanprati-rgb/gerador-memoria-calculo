@@ -48,9 +48,9 @@ class TestColumnMapping:
     def test_colunas_template_esperadas(self):
         """Colunas essenciais do template devem estar no mapeamento."""
         template_cols = get_template_columns()
-        assert "UC" in template_cols
-        assert "CNPJ" in template_cols
-        assert "Razão Social" in template_cols
+        assert "No. UC" in template_cols
+        assert "CPF/CNPJ" in template_cols
+        assert "Razao Social" in template_cols
 
 
 class TestGroupingConstants:
