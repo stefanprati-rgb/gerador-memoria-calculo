@@ -8,7 +8,9 @@ from logic.adapters.excel_adapter import ColumnValidationError, HeaderNotFoundEr
 from logic.services.sync_service import PARQUET_FILE, get_cache_update_time
 
 from ui.styles import inject_styles
-from ui.components import render_header, render_sidebar_metrics, render_groups_section, render_generation_button
+from ui.header import render_header
+from ui.sidebar import render_sidebar_metrics
+from ui.groups_ui import render_groups_section, render_generation_button
 from ui.admin import render_admin_panel
 
 # Inicializar logging

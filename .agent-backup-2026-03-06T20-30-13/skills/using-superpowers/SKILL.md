@@ -23,13 +23,6 @@ This is not negotiable. This is not optional. You cannot rationalize your way ou
 
 **Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
 
-## Automatic Memory Initialization (REQUIRED)
-If you see `.agent/memory.md` in the project root, you **MUST** initialize the context session before invoking any other skills:
-1. Try to read today's log at `.agent/sessions/<YYYY-MM-DD>.md`.
-2. **If missing (New Day):** Read yesterday's log and `.agent/memory.md`, then create today's log summarizing where you left off.
-3. **If present (Resume/Crash Recovery):** Read today's log and `.agent/memory.md`, then append `[INFO] Context Restored` to today's log.
-4. **Post-Action Log Hook:** Whenever you complete an action, you must append it to the active session log. Before writing to the log, you MUST ensure no PII is included (replace with `[REDACTED_LGPD]`).
-
 ```dot
 digraph skill_flow {
     "User message received" [shape=doublecircle];
