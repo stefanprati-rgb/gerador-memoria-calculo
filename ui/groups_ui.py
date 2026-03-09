@@ -195,7 +195,6 @@ def _generate_single(group: Group, orch: Any, start_time: float) -> None:
     if excel_data:
         filename = f"{sanitize_filename(group.name)}.xlsx"
         st.toast(f"✅ Planilha gerada em {elapsed:.1f}s!", icon="⚡")
-        st.balloons()
         st.success(f"Planilha **{filename}** gerada com sucesso!")
         st.download_button(
             label="📥 Baixar Arquivo Gerado",
@@ -221,7 +220,6 @@ def _generate_multiple(valid_groups: List[Group], orch: Any, start_time: float) 
     
     if zip_data:
         st.toast(f"✅ {len(valid_groups)} planilhas geradas em {elapsed:.1f}s!", icon="📦")
-        st.balloons()
         st.success(f"**{len(valid_groups)} planilhas** geradas e empacotadas com sucesso!")
         st.download_button(
             label="📦 Baixar Lote (ZIP)",
