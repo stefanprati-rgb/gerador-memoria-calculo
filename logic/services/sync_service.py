@@ -58,6 +58,35 @@ def build_consolidated_cache_from_uploads(balanco_bytes: bytes, gestao_bytes: by
         except Exception as e:
             logger.warning("Backup no Firebase falhou (continuando sem nuvem): %s", e)
 
+    return _process_dataframes(BALANCO_LOCAL, gestao_bytes, GESTAO_LOCAL)
+
+def build_consolidated_cache_from_local_network(network_path: str) -> bool:
+    """
+    Lê a planilha central do Balanço Energético diretamente do caminho do usuário na rede local/OneDrive,
+    dispensando a necessidade de upload de um arquivo de ~12MB cada vez.
+    Neste escopo de Auto-Sync, só preenchemos as obrigatoriedades e bypassamos a Gestão manual por ora, 
+    ou podemos futuramente mapear uma gestão na rede também.
+    """
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    
+    if not os.path.exists(network_path):
+        logger.error(f"Arquivo de rede não encontrado no caminho: {network_path}")
+        return False
+
+    logger.info(f"Copiando arquivo de rede local ({network_path}) para o cache de trabalho...")
+    try:
+        # Cópia binária direta por segurança contra locks de rede
+        with open(network_path, "rb") as src, open(BALANCO_LOCAL, "wb") as dst:
+            dst.write(src.read())
+        logger.info("Sucesso na importação da rede local!")
+    except Exception as e:
+        logger.error(f"Falha ao ler da rede local: {e}")
+        return False
+        
+    return _process_dataframes(BALANCO_LOCAL, None, None)
+
+def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str) -> bool:
+    """Motor central que efetivamente cria o Merge e Parquet a partir dos paths ou bytes providenciados."""
     # 3. Ler Balanço Energético
     logger.info("Iniciando leitura do Balanço Energético...")
     try:
