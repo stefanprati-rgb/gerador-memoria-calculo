@@ -199,6 +199,7 @@ class TemplateExcelWriter:
         "Status financeiro": "Status Pos-Faturamento",
         "Boleto faturado (R$)": "Boleto Raizen",
         "Tarifa Distribuidora": "Tarifa Raizen",
+        "Tafira Distribuidora": "Tarifa Raizen",
         "Custo com GD R$": "Custo c/ GD",
         "Custo sem GD R$": "Custo s/ GD",
         "Economia (R$)": "Ganho total Padrão",
@@ -257,7 +258,7 @@ class TemplateExcelWriter:
         ws = wb.active
 
         # Encontrar os headers na linha 1, aplicando strip para normalizar.
-        # Também atualiza os headers físicos para os nomes da fonte se necessário.
+        # Também atualiza os headers físicos para os nomes da fonte se necessário limpar espaços extras ou legados.
         header_row_idx = 1
         template_headers = {}
         for idx, cell in enumerate(ws[header_row_idx], 1):
@@ -271,6 +272,8 @@ class TemplateExcelWriter:
                     template_headers[new_name] = idx
                 else:
                     template_headers[original_val] = idx
+                    # IMPORTANTE: Força a reescrita no arquivo removendo os espaços em branco que existiam na fonte ("Vencimento " -> "Vencimento")
+                    cell.value = original_val
 
         # Determinar a próxima linha vazia para inserir dados
         start_row = ws.max_row + 1
