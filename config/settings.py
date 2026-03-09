@@ -4,6 +4,7 @@ Carrega valores do .env se existir, permite override por variáveis de ambiente.
 """
 
 from pydantic_settings import BaseSettings
+import os
 
 
 class Settings(BaseSettings):
@@ -27,6 +28,19 @@ class Settings(BaseSettings):
     # Firebase
     firebase_credentials_path: str = "firebase-credentials.json"
     firebase_storage_bucket: str = "hube-energy.appspot.com" # Exemplo, o usuário vai sobrescrever no .env
+
+    @property
+    def network_balanco_path(self) -> str:
+        """Caminho absoluto dinâmico baseado no perfil do usuário hospedeiro."""
+        base_dir = os.path.expanduser("~")
+        return os.path.join(
+            base_dir, 
+            "GRUPO GERA", 
+            "Gestão GDC - Documentos", 
+            "RAÍZEN", 
+            "05 - Gestao", 
+            "Balanco_Energetico_Raizen.xlsm"
+        )
 
     model_config = {
         "env_file": ".env",
