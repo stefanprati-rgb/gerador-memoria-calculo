@@ -75,35 +75,43 @@ def _render_group_card(group: dict, index: int, available_clients: List[str], av
             "Buscar cliente...", 
             key=search_key, 
             label_visibility="collapsed",
-            placeholder="🔍 Digite para filtrar clientes..."
+            placeholder="🔍 Digite o nome (ou parte) e pressione ENTER..."
         )
         
-        # Filtro de clientes com base na busca
-        filtered_clients = [c for c in available_clients if search_term.lower() in str(c).lower()] if search_term else available_clients
-        
-        col_sel_all_cli, col_clear_cli = st.columns([1, 1])
-        with col_sel_all_cli:
-            if st.button(f"✅ Selecionar {len(filtered_clients)} Filtrados", key=f"all_cli_{group['id']}", use_container_width=True):
-                current_clients = set(group['clients'])
-                current_clients.update(filtered_clients)
-                group['clients'] = list(current_clients)
-                st.rerun() 
-        with col_clear_cli:
-            if st.button("🧹 Limpar Todos", key=f"clear_cli_{group['id']}", use_container_width=True):
+        if search_term:
+            # Filtro de clientes com base na busca
+            filtered_clients = [c for c in available_clients if search_term.lower() in str(c).lower()]
+            
+            col_sel_all_cli, col_clear_cli = st.columns([1, 1])
+            with col_sel_all_cli:
+                if st.button(f"✅ Selecionar {len(filtered_clients)} Filtrados", key=f"all_cli_{group['id']}", use_container_width=True):
+                    current_clients = set(group['clients'])
+                    current_clients.update(filtered_clients)
+                    group['clients'] = list(current_clients)
+                    st.rerun() 
+            with col_clear_cli:
+                if st.button("🧹 Limpar Todos", key=f"clear_cli_{group['id']}", use_container_width=True):
+                    group['clients'] = []
+                    st.rerun()
+
+            # Container rolável com checkboxes (apenas se houver busca)
+            with st.container(height=250):
+                if filtered_clients:
+                    for client in filtered_clients:
+                        is_checked = client in group['clients']
+                        if st.checkbox(client, value=is_checked, key=f"chk_{group['id']}_{client}"):
+                            if client not in group['clients']:
+                                group['clients'].append(client)
+                        else:
+                            if client in group['clients']:
+                                group['clients'].remove(client)
+                else:
+                    st.info("Nenhum cliente encontrado com este termo.")
+        else:
+            st.info("☝️ Digite acima para buscar e selecionar clientes.")
+            if st.button("🧹 Limpar Lista de Selecionados", key=f"clear_cli_no_search_{group['id']}", use_container_width=True):
                 group['clients'] = []
                 st.rerun()
-
-        # Container rolável com checkboxes
-        with st.container(height=250):
-            for client in filtered_clients:
-                is_checked = client in group['clients']
-                # Nota: st.checkbox retorna o valor atual. Ao clicar, o fragmento re-executa.
-                if st.checkbox(client, value=is_checked, key=f"chk_{group['id']}_{client}"):
-                    if client not in group['clients']:
-                        group['clients'].append(client)
-                else:
-                    if client in group['clients']:
-                        group['clients'].remove(client)
 
         # Períodos: seleção + atalhos
         st.markdown("**Períodos de Referência**")
