@@ -261,19 +261,26 @@ class TemplateExcelWriter:
         # Também atualiza os headers físicos para os nomes da fonte se necessário limpar espaços extras ou legados.
         header_row_idx = 1
         template_headers = {}
+        
+        # Cria versão normalizada do mapa legado para busca insensível a espaços/casing
+        normalized_legacy_map = {k.strip().lower(): v for k, v in self.LEGACY_HEADER_MAP.items()}
+        
         for idx, cell in enumerate(ws[header_row_idx], 1):
             if cell.value:
-                original_val = str(cell.value).strip()
+                original_val = str(cell.value)
+                search_key = original_val.strip().lower()
                 
-                # Se for um nome legado, atualiza para o novo nome da fonte
-                if original_val in self.LEGACY_HEADER_MAP:
-                    new_name = self.LEGACY_HEADER_MAP[original_val]
+                # Se for um nome legado (mesmo escrito estranho), atualiza para o novo nome da fonte
+                if search_key in normalized_legacy_map:
+                    new_name = normalized_legacy_map[search_key]
                     cell.value = new_name  # Sobrescreve o header no arquivo de saída
                     template_headers[new_name] = idx
                 else:
-                    template_headers[original_val] = idx
+                    # Uso o clean_val para preencher em vez do original_val que pode ter espaços flutuando
+                    clean_val = original_val.strip()
+                    template_headers[clean_val] = idx
                     # IMPORTANTE: Força a reescrita no arquivo removendo os espaços em branco que existiam na fonte ("Vencimento " -> "Vencimento")
-                    cell.value = original_val
+                    cell.value = clean_val
 
         # Determinar a próxima linha vazia para inserir dados
         start_row = ws.max_row + 1
