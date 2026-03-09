@@ -54,13 +54,13 @@ if not os.path.exists(template_file):
 # --- LÓGICA PRINCIPAL ---
 
 @st.cache_resource(show_spinner="Carregando base de dados...")
-def load_orchestrator_v2(base_path: str, template_path: str, sheet: str):
+def load_orchestrator_v3(base_path: str, template_path: str, sheet: str):
     """Cria o Orchestrator cacheado para evitar releitura da planilha em cada rerun."""
     return Orchestrator(base_path, template_path, sheet_name=sheet)
 
 if base_file and template_file:
     try:
-        orch = load_orchestrator_v2(base_file, template_file, settings.base_sheet_name)
+        orch = load_orchestrator_v3(base_file, template_file, settings.base_sheet_name)
             
         available_periods = orch.get_available_periods()
         available_clients = orch.get_available_clients()
