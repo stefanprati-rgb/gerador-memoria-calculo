@@ -4,6 +4,8 @@ Extraídos de app.py para manter separação de responsabilidades.
 """
 import time
 import datetime
+import unicodedata
+import re
 import streamlit as st
 from typing import List
 
@@ -16,6 +18,24 @@ def render_header():
     <p>Automatize a geração de MC a partir da base Balanço Energético e Template de Destino</p>
 </div>
 """, unsafe_allow_html=True)
+
+
+def _normalize_search_string(text: str) -> str:
+    """Normaliza string para busca: minúsculas, sem acentos e sem pontuação."""
+    if not text:
+        return ""
+    if not isinstance(text, str):
+        text = str(text)
+    
+    # Remove acentos
+    text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8')
+    # Transforma em minúsculas
+    text = text.lower()
+    # Substitui caracteres não-alfanuméricos por espaço (ex: -, _, &)
+    text = re.sub(r'[^a-z0-9]', ' ', text)
+    # Remove espaços contínuos
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 
 def format_period_label(raw_period: str) -> str:
@@ -79,8 +99,9 @@ def _render_group_card(group: dict, index: int, available_clients: List[str], av
         )
         
         if search_term:
-            # Filtro de clientes com base na busca
-            filtered_clients = [c for c in available_clients if search_term.lower() in str(c).lower()]
+            # Filtro de clientes com base na busca inteligente (sem acentos, minúsculas, sem pontuação)
+            norm_search = _normalize_search_string(search_term)
+            filtered_clients = [c for c in available_clients if norm_search in _normalize_search_string(c)]
             
             col_sel_all_cli, col_clear_cli = st.columns([1, 1])
             with col_sel_all_cli:
