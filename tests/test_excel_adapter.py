@@ -143,3 +143,29 @@ class TestTemplateExcelWriter:
         # Linha 3 = UC Filha (não deve estar em negrito via parent_font)
         child_cell = ws.cell(row=3, column=4)
         assert child_cell.value == "Cliente Alpha"
+    def test_renomeacao_headers_legados(self, tmp_path):
+        """Deve detectar nomes antigos no template e convertê-los para os nomes da fonte no resultado."""
+        template_path = tmp_path / "legacy_template.xlsx"
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        # Header com nomes antigos
+        ws.cell(row=1, column=1, value="UC")
+        ws.cell(row=1, column=2, value="Razão Social")
+        wb.save(template_path)
+
+        df = pd.DataFrame({
+            "No. UC": ["UC001"],
+            "Razao Social": ["Cliente Teste"],
+            PARENT_ROW_FLAG: [False]
+        })
+
+        writer = TemplateExcelWriter(str(template_path))
+        mapping = {"No. UC": "No. UC", "Razao Social": "Razao Social"}
+        result = writer.generate_bytes(df, mapping)
+
+        # Verificar se o header foi renomeado no arquivo gerado
+        wb_res = openpyxl.load_workbook(io.BytesIO(result))
+        ws_res = wb_res.active
+        assert ws_res.cell(row=1, column=1).value == "No. UC"
+        assert ws_res.cell(row=1, column=2).value == "Razao Social"
+        assert ws_res.cell(row=2, column=1).value == "UC001"

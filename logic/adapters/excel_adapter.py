@@ -188,6 +188,22 @@ class TemplateExcelWriter:
     # Colunas da base que contêm CPF/CNPJ
     DOCUMENT_COLUMNS = {"CPF/CNPJ"}
 
+    # Mapeamento reverso para localizar colunas no template físico (mc.xlsx) que ainda usam nomes antigos
+    LEGACY_HEADER_MAP = {
+        "Data  Ref": "Referencia",
+        "UC": "No. UC",
+        "CNPJ": "CPF/CNPJ",
+        "Razão Social": "Razao Social",
+        "Energia compensada pela Raízen (kWh)": "Cred. Consumido Raizen",
+        "Regra aplicada": "Desconto Contratado",
+        "Status financeiro": "Status Pos-Faturamento",
+        "Boleto faturado (R$)": "Boleto Raizen",
+        "Tarifa Distribuidora": "Tarifa Raizen",
+        "Custo com GD R$": "Custo c/ GD",
+        "Custo sem GD R$": "Custo s/ GD",
+        "Economia (R$)": "Ganho total Padrão",
+    }
+
     def __init__(self, template_path_or_buffer: Any):
         self.template_source = template_path_or_buffer
 
@@ -240,13 +256,21 @@ class TemplateExcelWriter:
         wb = openpyxl.load_workbook(self.template_source)
         ws = wb.active
 
-        # Encontrar os headers na linha 1, aplicando strip para normalizar
+        # Encontrar os headers na linha 1, aplicando strip para normalizar.
+        # Também atualiza os headers físicos para os nomes da fonte se necessário.
         header_row_idx = 1
         template_headers = {}
         for idx, cell in enumerate(ws[header_row_idx], 1):
             if cell.value:
-                normalized = str(cell.value).strip()
-                template_headers[normalized] = idx
+                original_val = str(cell.value).strip()
+                
+                # Se for um nome legado, atualiza para o novo nome da fonte
+                if original_val in self.LEGACY_HEADER_MAP:
+                    new_name = self.LEGACY_HEADER_MAP[original_val]
+                    cell.value = new_name  # Sobrescreve o header no arquivo de saída
+                    template_headers[new_name] = idx
+                else:
+                    template_headers[original_val] = idx
 
         # Determinar a próxima linha vazia para inserir dados
         start_row = ws.max_row + 1
