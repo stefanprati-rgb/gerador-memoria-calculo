@@ -10,9 +10,8 @@ This profile adapts Superpowers workflows for Antigravity with strict single-flo
 2. Prefer local skills in `.agent/skills/<skill-name>/SKILL.md`.
 3. Execute one core task at a time with `task_boundary`.
 4. Use `browser_subagent` only for browser automation tasks.
-5. **PERSISTENT MEMORY:** If `.agent/memory.md` exists, you MUST initialize your session log (read yesterday/today's log, append actions) per the `using-superpowers` skill.
-6. Track checklist progress in `<project-root>/docs/plans/task.md` (table-only live tracker).
-7. Keep changes scoped to the requested task and verify before completion claims.
+5. Track checklist progress in `<project-root>/docs/plans/task.md` (table-only live tracker).
+6. Keep changes scoped to the requested task and verify before completion claims.
 
 ## Tool Translation Contract
 
@@ -51,7 +50,7 @@ When source skills reference legacy tool names, use these Antigravity equivalent
 
 Before saying a task is done:
 
-1. **LGPD GUARDRAIL:** Verify no personal data (CPF, emails, passwords, etc.) is logged or exposed in dev environments, exceptions, or `.agent/sessions/` logs. Before appending to a session log, pass content through `handling-personal-data` and replace PII with `[REDACTED_LGPD]`.
+1. **LGPD GUARDRAIL:** Verify no personal data (CPF, emails, passwords, etc.) is logged or exposed in dev environments or exceptions. Use the `handling-personal-data` skill if unsure.
 2. Run the relevant verification command(s).
 3. Confirm exit status and key output.
 4. Update `<project-root>/docs/plans/task.md`.
