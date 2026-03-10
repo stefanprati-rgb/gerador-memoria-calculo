@@ -331,6 +331,10 @@ class TemplateExcelWriter:
 
                     # Tratar NaNs
                     if pd.notna(val):
+                        # Tarifa Raizen não pode ser negativa (requisição do usuário)
+                        if base_col == "Tarifa Raizen" and isinstance(val, (int, float)) and val < 0:
+                            val = 0.0
+
                         # Aplicar formatação por tipo de coluna
                         if base_col in self.DATE_COLUMNS:
                             val = self._format_date(val)
