@@ -109,12 +109,10 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, mon
     assert cliente_a_fev["Vencimento"] == "10-03-2026"
     assert cliente_a_fev["Status Pos-Faturamento"] == "Atrasado"
     
-    # 2. Cliente B foi "Cancelado" na Gestão ("Sim"). Portanto, ele NÃO deve receber o Vencimento que lá existe.
-    # Deverá receber nulo (convertido para string 'None' ou '').
-    cliente_b = df_result[(df_result["No. UC"] == 5143128.0)].iloc[0]
-    assert pd.isna(cliente_b["Vencimento"]) or str(cliente_b["Vencimento"]) in ["None", "nan", "NaN"]
-    # E o status continua o do Balanço original
-    assert cliente_b["Status Pos-Faturamento"] == "Em aberto"
+    # 2. Cliente B foi "Cancelado" na Gestão ("Sim"). 
+    # De acordo com a regra de negócio atual, faturas canceladas são REMOVIDAS da base consolidada.
+    mask_b = df_result["No. UC"] == 5143128.0
+    assert mask_b.sum() == 0, "Fatura cancelada deveria ter sido removida da base consolidada"
     
     # 3. Cliente C tem Fev/2026 na base e usa uma string gigantesca. Deve casar perfeitamente.
     cliente_c = df_result[(df_result["No. UC"] == 4000476449.0)].iloc[0]

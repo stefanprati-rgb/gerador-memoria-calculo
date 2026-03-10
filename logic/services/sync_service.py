@@ -208,22 +208,8 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
                 logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros Gestão)...", merge_keys, len(df_gestao))
                 df_consolidado = pd.merge(df_consolidado, df_gestao, on=merge_keys, how="left")
 
-                # 6. Fallback: tentar merge apenas por UC para faturas que ainda estão sem vencimento
-                missing_venc = df_consolidado["Vencimento"].isna() if "Vencimento" in df_consolidado.columns else pd.Series(True, index=df_consolidado.index)
-                if missing_venc.any():
-                    # Cria um mapping UC -> último vencimento disponível na gestão (ignorando período)
-                    gestao_latest = df_gestao.drop_duplicates(subset=["No. UC_norm"], keep="last")
-                    
-                    logger.info("Fallback merge por UC para %d registros sem período correspondente.", missing_venc.sum())
-                    if "Vencimento" in gestao_latest.columns:
-                        vmap = gestao_latest.set_index("No. UC_norm")["Vencimento"]
-                        df_consolidado.loc[missing_venc, "Vencimento"] = df_consolidado.loc[missing_venc, "No. UC_norm"].map(vmap)
-                        
-                    status_gestao_col = "Status Pos-Faturamento_gestao"
-                    if status_gestao_col in gestao_latest.columns:
-                        smap = gestao_latest.set_index("No. UC_norm")[status_gestao_col]
-                        if status_gestao_col in df_consolidado.columns:
-                            df_consolidado.loc[missing_venc, status_gestao_col] = df_consolidado.loc[missing_venc, "No. UC_norm"].map(smap)
+                # 6. Removido Fallback por UC (evitar mistura de referências)
+                # O merge agora é estritamente por UC + Período.
 
                 # 7. Consolidação final de nomes de colunas
                 if "Status Pos-Faturamento_gestao" in df_consolidado.columns and "Status Pos-Faturamento" in df_consolidado.columns:
