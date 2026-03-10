@@ -21,6 +21,13 @@ GESTAO_REMOTE = "bases/gd_gestao_cobranca.xlsx"
 BALANCO_LOCAL = os.path.join(CACHE_DIR, "Balanco_Energetico.xlsm")
 GESTAO_LOCAL = os.path.join(CACHE_DIR, "gd_gestao.xlsx")
 
+# Colunas que são intencionalmente texto — nunca converter para numérico
+_TEXT_COLUMNS = {
+    "Razao Social", "Distribuidora", "Desconto Contratado",
+    "Status Pos-Faturamento", "No. UC", "CPF/CNPJ", "Referencia",
+    "Excecao Fat.", "Vencimento",
+}
+
 
 def build_consolidated_cache_from_uploads(balanco_bytes: bytes, gestao_bytes: bytes | None = None, firebase_client=None) -> bool:
     """
@@ -126,8 +133,6 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
 
                 df_gestao = pd.read_excel(GESTAO_LOCAL, usecols=cols_to_read)
 
-                df_gestao = pd.read_excel(GESTAO_LOCAL, usecols=cols_to_read)
-
                 # 1. Definir auxiliares de normalização
                 def normalize_uc(val):
                     if pd.isna(val): return ""
@@ -170,18 +175,31 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
                 # Remover faturas canceladas do Balanço Energético AGORA
                 # Isso evita que elas apareçam no Excel e que o Fallback ressuscite elas com datas erradas
                 if mask_canceled.any() and ref_merge_col in df_consolidado.columns:
-                    df_canceled_keys = df_gestao[mask_canceled][["No. UC_norm", ref_merge_col]].dropna()
-                    if not df_canceled_keys.empty:
-                        # Criar chaves compostas para drop preciso
-                        target_keys = df_consolidado["No. UC_norm"] + "_" + df_consolidado[ref_merge_col].astype(str)
-                        drop_keys = df_canceled_keys["No. UC_norm"] + "_" + df_canceled_keys[ref_merge_col].astype(str)
+                    # Identificar chaves (UC+Período) candidatas a cancelamento
+                    df_canceled_cand = df_gestao[mask_canceled][["No. UC_norm", ref_merge_col]].dropna().drop_duplicates()
+                    # Identificar chaves que possuem pelo menos um registro ATIVO
+                    df_active_keys = df_gestao[~mask_canceled][["No. UC_norm", ref_merge_col]].dropna().drop_duplicates()
+                    
+                    if not df_canceled_cand.empty:
+                        # Criar chaves compostas para comparação
+                        cand_keys = df_canceled_cand["No. UC_norm"] + "_" + df_canceled_cand[ref_merge_col].astype(str)
+                        active_keys = df_active_keys["No. UC_norm"] + "_" + df_active_keys[ref_merge_col].astype(str)
                         
-                        antes = len(df_consolidado)
-                        df_consolidado = df_consolidado[~target_keys.isin(drop_keys)].copy()
-                        logger.info("Filtro Canceladas: %d registros removidos da base consolidada.", antes - len(df_consolidado))
+                        # Só removemos do Balanço se a chave estiver cancelada E NÃO houver versão ativa
+                        drop_keys = cand_keys[~cand_keys.isin(active_keys)]
+                        
+                        if not drop_keys.empty:
+                            target_keys = df_consolidado["No. UC_norm"] + "_" + df_consolidado[ref_merge_col].astype(str)
+                            antes = len(df_consolidado)
+                            df_consolidado = df_consolidado[~target_keys.isin(drop_keys)].copy()
+                            logger.info("Filtro Canceladas: %d registros removidos da base consolidada.", antes - len(df_consolidado))
 
                 # 4. Limpar df_gestao (remover cancelados) e renomear para o Merge
+                # Remover cancelados da gestão ANTES de deduplicar
                 df_gestao = df_gestao[~mask_canceled].copy()
+                logger.info(
+                    "Gestão após remoção de cancelados: %d registros.", len(df_gestao)
+                )
                 
                 rename_dict = {}
                 if venc_col: rename_dict[venc_col] = "Vencimento"
@@ -203,10 +221,49 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
                 
                 # Deduplicar gestão preservando o período
                 df_gestao = df_gestao.dropna(subset=merge_keys)
-                df_gestao = df_gestao.drop_duplicates(subset=merge_keys, keep="last")
+
+                # Ordenar por Vencimento decrescente antes de deduplicar
+                # Assim keep="first" preserva sempre o vencimento mais recente
+                # entre duplicatas do mesmo UC + Período
+                if "Vencimento" in df_gestao.columns:
+                    df_gestao["_venc_sort"] = pd.to_datetime(
+                        df_gestao["Vencimento"], dayfirst=True, errors="coerce"
+                    )
+                    df_gestao = df_gestao.sort_values("_venc_sort", ascending=False)
+                    df_gestao = df_gestao.drop(columns=["_venc_sort"])
+
+                df_gestao = df_gestao.drop_duplicates(subset=merge_keys, keep="first")
+                logger.info(
+                    "Gestão após deduplicação: %d registros únicos por UC+Período.",
+                    len(df_gestao)
+                )
 
                 logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros Gestão)...", merge_keys, len(df_gestao))
+                _original_len = len(df_consolidado)  # capture antes do merge
                 df_consolidado = pd.merge(df_consolidado, df_gestao, on=merge_keys, how="left")
+
+                # Validação pós-merge
+                n_sem_vencimento = df_consolidado["Vencimento"].isna().sum() if "Vencimento" in df_consolidado.columns else 0
+                n_linhas_extras = len(df_consolidado) - _original_len
+
+                logger.info(
+                    "Pós-merge: %d registros | %d sem Vencimento | %d linhas vs original",
+                    len(df_consolidado), n_sem_vencimento, n_linhas_extras
+                )
+
+                if n_linhas_extras > 0:
+                    pct = n_linhas_extras / max(_original_len, 1) * 100
+                    logger.warning(
+                        "Merge produziu %d linhas extras (%.1f%% acima do original). "
+                        "Possível duplicata na base de Gestão.",
+                        n_linhas_extras, pct
+                    )
+                    if pct > 5.0:
+                        raise ValueError(
+                            f"Merge abortado: {n_linhas_extras} linhas extras "
+                            f"({pct:.1f}% acima do original de {_original_len}). "
+                            "Verifique duplicatas na base de Gestão por UC + Período."
+                        )
 
                 # 6. Removido Fallback por UC (evitar mistura de referências)
                 # O merge agora é estritamente por UC + Período.
@@ -223,6 +280,10 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
                 df_consolidado.drop(columns=[c for c in drop_aux if c in df_consolidado.columns], inplace=True)
             else:
                 logger.warning("Colunas chaves não encontradas na Gestão: UC=%s, Vencimento=%s", uc_col, venc_col)
+        except ValueError as e:
+            # Re-raise erros de validação propositais
+            logger.error(str(e))
+            raise e
         except Exception as e:
             logger.warning("Falha ao ler ou cruzar base de Gestão (continuará apenas com Balanço). Erro: %s", e)
             import traceback
@@ -232,6 +293,9 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
 
     # 5. Corrigir colunas com dtype misto para evitar falha no Parquet
     for col in df_consolidado.select_dtypes(include=["object"]).columns:
+        if col in _TEXT_COLUMNS:
+            df_consolidado[col] = df_consolidado[col].astype(str).replace("nan", pd.NA)
+            continue
         try:
             converted = pd.to_numeric(df_consolidado[col], errors="coerce")
             # Se >= 80% dos valores foram convertidos com sucesso, aceitar como numérico
