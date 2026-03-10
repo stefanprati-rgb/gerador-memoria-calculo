@@ -182,8 +182,11 @@ class TemplateExcelWriter:
         "Boleto Raizen", "Tarifa Raizen", "Custo c/ GD", "Custo s/ GD", "Ganho total Padrão",
     }
 
-    # Colunas da base que contêm datas
+    # Colunas da base que contêm datas (mês/ano)
     DATE_COLUMNS = {"Referencia"}
+
+    # Colunas da base que contêm datas completas (dia/mês/ano)
+    FULL_DATE_COLUMNS = {"Vencimento"}
 
     # Colunas da base que contêm CPF/CNPJ
     DOCUMENT_COLUMNS = {"CPF/CNPJ"}
@@ -211,14 +214,30 @@ class TemplateExcelWriter:
     @staticmethod
     def _format_date(val) -> Optional[str]:
         """Converte datetime/Timestamp em string MM/YYYY."""
-        if val is None:
+        if val is None or pd.isna(val):
             return None
         if isinstance(val, (pd.Timestamp,)):
             return val.strftime("%m/%Y")
         try:
-            ts = pd.Timestamp(val)
+            ts = pd.to_datetime(val, dayfirst=True)
             return ts.strftime("%m/%Y")
         except Exception:
+            return str(val)
+
+    @staticmethod
+    def _format_date_full(val) -> Optional[str]:
+        """Converte datetime/Timestamp/str em string DD/MM/YYYY."""
+        if val is None or pd.isna(val):
+            return None
+        if isinstance(val, (pd.Timestamp,)):
+            return val.strftime("%d/%m/%Y")
+        try:
+            # Assume DD-MM-YYYY format mostly
+            ts = pd.to_datetime(val, dayfirst=True)
+            return ts.strftime("%d/%m/%Y")
+        except Exception:
+            if isinstance(val, str):
+                return val.replace("-", "/")
             return str(val)
 
     @staticmethod
@@ -315,6 +334,8 @@ class TemplateExcelWriter:
                         # Aplicar formatação por tipo de coluna
                         if base_col in self.DATE_COLUMNS:
                             val = self._format_date(val)
+                        elif base_col in self.FULL_DATE_COLUMNS:
+                            val = self._format_date_full(val)
                         elif base_col in self.DOCUMENT_COLUMNS:
                             val = self._format_document(val)
                     else:
