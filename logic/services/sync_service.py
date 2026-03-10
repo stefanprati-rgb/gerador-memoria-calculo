@@ -126,98 +126,106 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
 
                 df_gestao = pd.read_excel(GESTAO_LOCAL, usecols=cols_to_read)
 
-                # 1. Filtrar Cancelados
-                # Primeira tentativa: Coluna "Cancelada" (Sim/Não)
-                if cancelada_col and cancelada_col in df_gestao.columns:
-                    antes = len(df_gestao)
-                    cancelados = df_gestao[cancelada_col].astype(str).str.strip().str.upper()
-                    # Manter apenas o que NÃO for "SIM" ou "S"
-                    df_gestao = df_gestao[~cancelados.isin(["SIM", "S", "TRUE", "1"])]
-                    logger.info("Filtro Cancelada (coluna): %d removidos.", antes - len(df_gestao))
-                    df_gestao = df_gestao.drop(columns=[cancelada_col])
-                # Segunda tentativa: Data de Cancelamento preenchida
-                elif cancel_col and cancel_col in df_gestao.columns:
-                    antes = len(df_gestao)
-                    cancel_values = df_gestao[cancel_col].astype(str).str.strip()
-                    mask_not_cancelled = pd.isna(df_gestao[cancel_col]) | (cancel_values == "") | (cancel_values == "-") | (cancel_values == "nan") | (cancel_values.str.lower() == "nat") | (cancel_values.str.lower() == "none")
-                    df_gestao = df_gestao[mask_not_cancelled]
-                    logger.info("Filtro Data de Cancelamento: %d removidos.", antes - len(df_gestao))
-                    df_gestao = df_gestao.drop(columns=[cancel_col])
+                df_gestao = pd.read_excel(GESTAO_LOCAL, usecols=cols_to_read)
 
-                # Renomear colunas
-                rename_dict = {uc_col: "No. UC"}
-                if venc_col: rename_dict[venc_col] = "Vencimento"
-                if status_col: rename_dict[status_col] = "Status Pos-Faturamento_gestao"
-                if ref_col: rename_dict[ref_col] = "Referencia_gestao"
-
-                df_gestao.rename(columns=rename_dict, inplace=True)
-
-                # 2. Normalizar No. UC
+                # 1. Definir auxiliares de normalização
                 def normalize_uc(val):
                     if pd.isna(val): return ""
                     s = str(val).strip()
                     if s.endswith(".0"): s = s[:-2]
-                    # Remover pontuações, deixar só dígitos
                     s = ''.join(filter(str.isdigit, s))
                     return s
 
-                df_consolidado["No. UC_norm"] = df_consolidado["No. UC"].apply(normalize_uc)
-                df_gestao["No. UC_norm"] = df_gestao["No. UC"].apply(normalize_uc)
-                
-                # Para evitar colunas duplicadas (x_ e _y) no merge, dropamos a original da Gestão
-                df_gestao = df_gestao.drop(columns=["No. UC"])
+                def parse_ref(val):
+                    if pd.isna(val): return pd.NaT
+                    s = str(val).strip()
+                    try:
+                        parts = s.replace("/", "-").split("-")
+                        if len(parts) == 2:
+                            if len(parts[0]) == 4: # YYYY-MM
+                                return pd.Timestamp(year=int(parts[0]), month=int(parts[1]), day=1)
+                            else: # MM-YYYY
+                                return pd.Timestamp(year=int(parts[1]), month=int(parts[0]), day=1)
+                    except:
+                        pass
+                    return pd.to_datetime(val, errors="coerce")
 
-                # 3. Normalizar Referência da Gestão (ex: "11-2025" -> Timestamp("2025-11-01"))
-                merge_keys = ["No. UC_norm"]
-                if "Referencia_gestao" in df_gestao.columns and "Referencia" in df_consolidado.columns:
-                    def parse_ref(val):
-                        if pd.isna(val): return pd.NaT
-                        s = str(val).strip()
-                        try:
-                            # Formato esperado: MM-YYYY ou MM/YYYY
-                            parts = s.replace("/", "-").split("-")
-                            if len(parts) == 2:
-                                if len(parts[0]) == 4: # YYYY-MM
-                                    return pd.Timestamp(year=int(parts[0]), month=int(parts[1]), day=1)
-                                else: # MM-YYYY
-                                    return pd.Timestamp(year=int(parts[1]), month=int(parts[0]), day=1)
-                        except:
-                            pass
-                        # Fallback to pandas to_datetime
-                        return pd.to_datetime(val, errors="coerce")
+                # 2. Normalizar chaves em ambas as bases para detecção de cancelados
+                df_gestao["No. UC_norm"] = df_gestao[uc_col].apply(normalize_uc)
+                df_consolidado["No. UC_norm"] = df_consolidado["No. UC"].apply(normalize_uc)
+                
+                ref_merge_col = "Referencia_merge"
+                if ref_col:
+                    df_gestao[ref_merge_col] = df_gestao[ref_col].apply(parse_ref)
+                    df_consolidado[ref_merge_col] = pd.to_datetime(df_consolidado["Referencia"], errors="coerce").dt.to_period('M').dt.to_timestamp()
+
+                # 3. Identificar Cancelados (para remoção total do Balanço)
+                mask_canceled = pd.Series(False, index=df_gestao.index)
+                if cancelada_col and cancelada_col in df_gestao.columns:
+                    mask_canceled = df_gestao[cancelada_col].astype(str).str.strip().str.upper().isin(["SIM", "S", "TRUE", "1"])
+                elif cancel_col and cancel_col in df_gestao.columns:
+                    cv = df_gestao[cancel_col].astype(str).str.strip().str.lower()
+                    mask_canceled = df_gestao[cancel_col].notna() & (~cv.isin(["", "-", "nan", "nat", "none"]))
+
+                # Remover faturas canceladas do Balanço Energético AGORA
+                # Isso evita que elas apareçam no Excel e que o Fallback ressuscite elas com datas erradas
+                if mask_canceled.any() and ref_merge_col in df_consolidado.columns:
+                    df_canceled_keys = df_gestao[mask_canceled][["No. UC_norm", ref_merge_col]].dropna()
+                    if not df_canceled_keys.empty:
+                        # Criar chaves compostas para drop preciso
+                        target_keys = df_consolidado["No. UC_norm"] + "_" + df_consolidado[ref_merge_col].astype(str)
+                        drop_keys = df_canceled_keys["No. UC_norm"] + "_" + df_canceled_keys[ref_merge_col].astype(str)
                         
-                    df_gestao["Referencia_merge"] = df_gestao["Referencia_gestao"].apply(parse_ref)
-                    # Normalizar o lado do Balanço pro primeiro dia do mês para garantir match
-                    df_consolidado["Referencia_merge"] = pd.to_datetime(df_consolidado["Referencia"], errors="coerce").dt.to_period('M').dt.to_timestamp()
-                    
-                    merge_keys.append("Referencia_merge")
-                    
-                # 4. Deduplicar gestão preservando o período
+                        antes = len(df_consolidado)
+                        df_consolidado = df_consolidado[~target_keys.isin(drop_keys)].copy()
+                        logger.info("Filtro Canceladas: %d registros removidos da base consolidada.", antes - len(df_consolidado))
+
+                # 4. Limpar df_gestao (remover cancelados) e renomear para o Merge
+                df_gestao = df_gestao[~mask_canceled].copy()
+                
+                rename_dict = {}
+                if venc_col: rename_dict[venc_col] = "Vencimento"
+                if status_col: rename_dict[status_col] = "Status Pos-Faturamento_gestao"
+                
+                # Remover colunas originais que não usaremos mais ou renomearemos
+                cols_to_drop = [uc_col]
+                if ref_col: cols_to_drop.append(ref_col)
+                if cancel_col: cols_to_drop.append(cancel_col)
+                if cancelada_col: cols_to_drop.append(cancelada_col)
+                
+                df_gestao = df_gestao.drop(columns=[c for c in cols_to_drop if c in df_gestao.columns])
+                df_gestao.rename(columns=rename_dict, inplace=True)
+
+                # 5. Realizar o Merge (Cruzamento)
+                merge_keys = ["No. UC_norm"]
+                if ref_merge_col in df_gestao.columns and ref_merge_col in df_consolidado.columns:
+                    merge_keys.append(ref_merge_col)
+                
+                # Deduplicar gestão preservando o período
                 df_gestao = df_gestao.dropna(subset=merge_keys)
                 df_gestao = df_gestao.drop_duplicates(subset=merge_keys, keep="last")
 
                 logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros Gestão)...", merge_keys, len(df_gestao))
                 df_consolidado = pd.merge(df_consolidado, df_gestao, on=merge_keys, how="left")
 
-                # Fallback: tentar merge apenas por UC para períodos que não deram match
-                if "Referencia_merge" in merge_keys:
-                    missing_venc = df_consolidado["Vencimento"].isna() if "Vencimento" in df_consolidado.columns else pd.Series(True, index=df_consolidado.index)
-                    if missing_venc.any():
-                        # Cria um mapping UC -> último vencimento disponível na gestão (ignorando período)
-                        gestao_latest = df_gestao.drop_duplicates(subset=["No. UC_norm"], keep="last")
+                # 6. Fallback: tentar merge apenas por UC para faturas que ainda estão sem vencimento
+                missing_venc = df_consolidado["Vencimento"].isna() if "Vencimento" in df_consolidado.columns else pd.Series(True, index=df_consolidado.index)
+                if missing_venc.any():
+                    # Cria um mapping UC -> último vencimento disponível na gestão (ignorando período)
+                    gestao_latest = df_gestao.drop_duplicates(subset=["No. UC_norm"], keep="last")
+                    
+                    logger.info("Fallback merge por UC para %d registros sem período correspondente.", missing_venc.sum())
+                    if "Vencimento" in gestao_latest.columns:
+                        vmap = gestao_latest.set_index("No. UC_norm")["Vencimento"]
+                        df_consolidado.loc[missing_venc, "Vencimento"] = df_consolidado.loc[missing_venc, "No. UC_norm"].map(vmap)
                         
-                        logger.info("Fallback merge por UC para %d registros sem período correspondente.", missing_venc.sum())
-                        if "Vencimento" in gestao_latest.columns:
-                            vmap = gestao_latest.set_index("No. UC_norm")["Vencimento"]
-                            df_consolidado.loc[missing_venc, "Vencimento"] = df_consolidado.loc[missing_venc, "No. UC_norm"].map(vmap)
-                            
-                        status_gestao_col = "Status Pos-Faturamento_gestao"
-                        if status_gestao_col in gestao_latest.columns:
-                            smap = gestao_latest.set_index("No. UC_norm")[status_gestao_col]
-                            if status_gestao_col in df_consolidado.columns:
-                                df_consolidado.loc[missing_venc, status_gestao_col] = df_consolidado.loc[missing_venc, "No. UC_norm"].map(smap)
+                    status_gestao_col = "Status Pos-Faturamento_gestao"
+                    if status_gestao_col in gestao_latest.columns:
+                        smap = gestao_latest.set_index("No. UC_norm")[status_gestao_col]
+                        if status_gestao_col in df_consolidado.columns:
+                            df_consolidado.loc[missing_venc, status_gestao_col] = df_consolidado.loc[missing_venc, "No. UC_norm"].map(smap)
 
-                # Limpeza: consolidar as duas colunas de Status Pos-Faturamento
+                # 7. Consolidação final de nomes de colunas
                 if "Status Pos-Faturamento_gestao" in df_consolidado.columns and "Status Pos-Faturamento" in df_consolidado.columns:
                     df_consolidado["Status Pos-Faturamento"] = df_consolidado["Status Pos-Faturamento_gestao"].combine_first(df_consolidado["Status Pos-Faturamento"])
                     df_consolidado.drop(columns=["Status Pos-Faturamento_gestao"], inplace=True)
@@ -225,12 +233,14 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
                     df_consolidado.rename(columns={"Status Pos-Faturamento_gestao": "Status Pos-Faturamento"}, inplace=True)
                     
                 # Limpar colunas auxiliares de merge
-                drop_aux = ["No. UC_norm", "Referencia_merge", "Referencia_gestao"]
+                drop_aux = ["No. UC_norm", "Referencia_merge"]
                 df_consolidado.drop(columns=[c for c in drop_aux if c in df_consolidado.columns], inplace=True)
             else:
                 logger.warning("Colunas chaves não encontradas na Gestão: UC=%s, Vencimento=%s", uc_col, venc_col)
         except Exception as e:
             logger.warning("Falha ao ler ou cruzar base de Gestão (continuará apenas com Balanço). Erro: %s", e)
+            import traceback
+            logger.debug(traceback.format_exc())
     else:
         logger.info("Base de Gestão não disponível. Seguindo sem Vencimento/Status extra.")
 
