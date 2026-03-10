@@ -124,6 +124,27 @@ class TestAgrupamento:
         assert len(parent_rows) == 1
         assert len(result) == original_len + 1
 
+    def test_tarifa_raizen_negativa_vira_zero(self, sample_base_xlsx, sample_template_xlsx):
+        """Valores negativos na Tarifa Raizen devem ser convertidos para 0.00."""
+        import pandas as pd
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+        
+        # Criar um DF de teste com Tarifa Raizen negativa
+        df_test = pd.DataFrame({
+            "No. UC": ["UC1", "UC2"],
+            "Referencia": ["01/2026", "01/2026"],
+            "Razao Social": ["Test", "Test"],
+            "Tarifa Raizen": [-10.0, 5.0],      # Soma = -5.0
+            "Excecao Fat.": ["Agrupamento", "Agrupamento"],
+            PARENT_ROW_FLAG: [False, False]
+        })
+        
+        result = orch._apply_grouping(df_test)
+        parent_row = result[result[PARENT_ROW_FLAG] == True].iloc[0]
+        
+        # A soma -5.0 deve ter sido convertida para 0.0
+        assert parent_row["Tarifa Raizen"] == 0.0
+
 
 class TestGenerateMultiple:
     """Testes de geração de múltiplos grupos (lote)."""
