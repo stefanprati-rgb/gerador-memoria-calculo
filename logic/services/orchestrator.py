@@ -90,7 +90,11 @@ class Orchestrator:
                 # Somar as colunas financeiras (min_count=1 garante que se tudo for NaN, fica NaN)
                 for col in SUM_COLUMNS:
                     if col in group_df.columns:
-                        parent_row[col] = pd.to_numeric(group_df[col], errors="coerce").sum(min_count=1)
+                        val = pd.to_numeric(group_df[col], errors="coerce").sum(min_count=1)
+                        # Tarifa Raizen não pode ser negativa (requisição do usuário)
+                        if col == "Tarifa Raizen" and pd.notna(val) and val < 0:
+                            val = 0.0
+                        parent_row[col] = val
                 
                 # Juntar a linha pai e as linhas filhas do grupo
                 grouped_dfs.append(pd.DataFrame([parent_row]))
