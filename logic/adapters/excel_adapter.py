@@ -182,11 +182,11 @@ class TemplateExcelWriter:
         "Boleto Raizen", "Tarifa Raizen", "Custo c/ GD", "Custo s/ GD", "Ganho total Padrão",
     }
 
-    # Colunas da base que contêm datas (mês/ano)
-    DATE_COLUMNS = {"Referencia"}
+    # Colunas da base que contêm datas (mês/ano) - Removido Referencia para formatar como data completa
+    DATE_COLUMNS = set()
 
     # Colunas da base que contêm datas completas (dia/mês/ano)
-    FULL_DATE_COLUMNS = {"Vencimento"}
+    FULL_DATE_COLUMNS = {"Vencimento", "Referencia"}
 
     # Colunas da base que contêm CPF/CNPJ
     DOCUMENT_COLUMNS = {"CPF/CNPJ"}

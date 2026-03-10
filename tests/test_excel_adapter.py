@@ -169,3 +169,22 @@ class TestTemplateExcelWriter:
         assert ws_res.cell(row=1, column=1).value == "No. UC"
         assert ws_res.cell(row=1, column=2).value == "Razao Social"
         assert ws_res.cell(row=2, column=1).value == "UC001"
+
+    def test_formatacao_referencia_full_date(self, sample_template_xlsx):
+        """A coluna Referencia deve ser formatada como data completa (DD/MM/YYYY)."""
+        df = pd.DataFrame({
+            "Referencia": ["2026-01-01"],
+            "No. UC": ["UC001"],
+            PARENT_ROW_FLAG: [False]
+        })
+
+        writer = TemplateExcelWriter(sample_template_xlsx)
+        mapping = {"Referencia": "Referencia", "No. UC": "No. UC"}
+        result = writer.generate_bytes(df, mapping)
+
+        wb = openpyxl.load_workbook(io.BytesIO(result))
+        ws = wb.active
+        
+        # O valor no Excel deve ser a string formatada "01/01/2026"
+        # Nota: Referencia está na coluna 1 no sample_template_xlsx
+        assert ws.cell(row=2, column=1).value == "01/01/2026"
