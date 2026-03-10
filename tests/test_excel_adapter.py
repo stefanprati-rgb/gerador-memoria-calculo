@@ -170,6 +170,25 @@ class TestTemplateExcelWriter:
         assert ws_res.cell(row=1, column=2).value == "Razao Social"
         assert ws_res.cell(row=2, column=1).value == "UC001"
 
+    def test_tarifa_raizen_negativa_vira_zero_no_excel(self, sample_template_xlsx):
+        """Valores negativos na Tarifa Raizen devem ser convertidos para 0.00 no arquivo final."""
+        df = pd.DataFrame({
+            "No. UC": ["UC1"],
+            "Tarifa Raizen": [-15.50],
+            PARENT_ROW_FLAG: [False]
+        })
+
+        writer = TemplateExcelWriter(sample_template_xlsx)
+        mapping = {"Tarifa Raizen": "Tarifa Raizen", "No. UC": "No. UC"}
+        result = writer.generate_bytes(df, mapping)
+
+        wb = openpyxl.load_workbook(io.BytesIO(result))
+        ws = wb.active
+        
+        # O valor no Excel deve ser 0
+        # Tarifa Raizen está na coluna 11 no sample_template_xlsx
+        assert ws.cell(row=2, column=11).value == 0.0
+
     def test_formatacao_referencia_full_date(self, sample_template_xlsx):
         """A coluna Referencia deve ser formatada como data completa (DD/MM/YYYY)."""
         df = pd.DataFrame({
