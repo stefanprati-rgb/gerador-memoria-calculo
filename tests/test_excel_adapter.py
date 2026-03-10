@@ -207,3 +207,45 @@ class TestTemplateExcelWriter:
         # O valor no Excel deve ser a string formatada "01/01/2026"
         # Nota: Referencia está na coluna 1 no sample_template_xlsx
         assert ws.cell(row=2, column=1).value == "01/01/2026"
+
+    def test_destaque_laranja_em_celulas_vazias(self, sample_template_xlsx):
+        """Gerar Excel com linha sem Vencimento deve aplicar fundo laranja na célula."""
+        df = pd.DataFrame({
+            "No. UC": ["UC001"],
+            "Vencimento": [pd.NA],
+            PARENT_ROW_FLAG: [False]
+        })
+
+        writer = TemplateExcelWriter(sample_template_xlsx)
+        mapping = {"Vencimento": "Vencimento", "No. UC": "No. UC"}
+        result = writer.generate_bytes(df, mapping)
+
+        wb = openpyxl.load_workbook(io.BytesIO(result))
+        ws = wb.active
+        
+        # Vencimento está na coluna 8 no sample_template_xlsx
+        cell = ws.cell(row=2, column=8)
+        
+        # FFE0B2 é o laranja claro. openpyxl retorna com o prefixo FF para opacidade total.
+        fill_color = cell.fill.start_color.rgb
+        assert fill_color in ["FFFFE0B2", "00FFE0B2"]
+
+    def test_comentario_em_uc_com_dado_ausente(self, sample_template_xlsx):
+        """Linha sem Vencimento deve adicionar comentário na célula da coluna No. UC."""
+        df = pd.DataFrame({
+            "No. UC": ["UC001"],
+            "Vencimento": [pd.NA],
+            PARENT_ROW_FLAG: [False]
+        })
+
+        writer = TemplateExcelWriter(sample_template_xlsx)
+        mapping = {"Vencimento": "Vencimento", "No. UC": "No. UC"}
+        result = writer.generate_bytes(df, mapping)
+
+        wb = openpyxl.load_workbook(io.BytesIO(result))
+        ws = wb.active
+        
+        # No. UC está na coluna 2 no sample_template_xlsx
+        uc_cell = ws.cell(row=2, column=2)
+        assert uc_cell.comment is not None
+        assert "Dado ausente" in uc_cell.comment.text

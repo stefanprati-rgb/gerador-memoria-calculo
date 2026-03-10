@@ -70,7 +70,7 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, mon
     gestao_bytes = gestao_io.getvalue()
     
     # Executa a função passando os bytes (que serão salvos nos paths que mockamos e lidos depois)
-    success = sync.build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, firebase_client=None)
+    success, report = sync.build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, firebase_client=None)
     
     assert success is True
     assert parquet_path.exists()
@@ -208,7 +208,7 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, tmp_path, monkeyp
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
     
     # Executa sem gestão
-    success = sync.build_consolidated_cache_from_uploads(b"fake", None)
+    success, report = sync.build_consolidated_cache_from_uploads(b"fake", None)
     assert success is True
     
     df_result = pd.read_parquet(parquet_path, engine="fastparquet")
@@ -252,7 +252,7 @@ def test_cancelado_nao_contamina_ativo(mock_balanco_df, tmp_path, monkeypatch):
     gestao_df.to_excel(gestao_io, index=False, engine='openpyxl')
     gestao_bytes = gestao_io.getvalue()
     
-    success = sync.build_consolidated_cache_from_uploads(b"fake", gestao_bytes)
+    success, report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_bytes)
     assert success is True
     
     df_result = pd.read_parquet(parquet_path, engine="fastparquet")
@@ -297,7 +297,7 @@ def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, tmp_path, monke
     gestao_df.to_excel(gestao_io, index=False, engine='openpyxl')
     gestao_bytes = gestao_io.getvalue()
     
-    success = sync.build_consolidated_cache_from_uploads(b"fake", gestao_bytes)
+    success, report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_bytes)
     assert success is True
     
     df_result = pd.read_parquet(parquet_path, engine="fastparquet")
@@ -306,3 +306,116 @@ def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, tmp_path, monke
     
     # Não deve receber vencimento de outro período
     assert pd.isna(jan["Vencimento"])
+
+def test_pendencias_periodo_nao_lancado(mock_balanco_df, tmp_path, monkeypatch):
+    """UC existe na Gestão em outro período -> deve aparecer no relatório como PERIODO_NAO_LANCADO."""
+    import logic.services.sync_service as sync
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    monkeypatch.setattr(sync, "CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr(sync, "PENDENCIAS_FILE", str(cache_dir / "pendencias.json"))
+    monkeypatch.setattr(sync, "PARQUET_FILE", str(cache_dir / "base.parquet"))
+    monkeypatch.setattr(sync, "BALANCO_LOCAL", str(cache_dir / "Balanco_Energetico.xlsm"))
+    monkeypatch.setattr(sync, "GESTAO_LOCAL", str(cache_dir / "gd_gestao.xlsx"))
+    
+    class MockExcelReader:
+        def __init__(self, *args, **kwargs):
+            self.df = pd.DataFrame({
+                "Referencia": ["2026-01-01"],
+                "No. UC": ["123"],
+                "Razao Social": ["Test"],
+                "CPF/CNPJ": ["444"],
+                "Status Pos-Faturamento": ["-"]
+            })
+    monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
+
+    # Gestao tem a UC 123 mas no periodo 02/2026 (diferente de 01/2026)
+    gestao_df = pd.DataFrame({
+        "Instalação": [123],
+        "Mês de Referência": ["02-2026"],
+        "Vencimento": ["10-03-2026"],
+        "Status": ["Pago"]
+    })
+    
+    gestao_io = io.BytesIO()
+    gestao_df.to_excel(gestao_io, index=False, engine='openpyxl')
+    
+    success, report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_io.getvalue())
+    assert success is True
+    assert report["total_ucs_sem_vencimento"] == 1
+    assert report["pendencias"][0]["tipo"] == "PERIODO_NAO_LANCADO"
+
+def test_pendencias_uc_ausente(mock_balanco_df, tmp_path, monkeypatch):
+    """UC não existe na Gestão em nenhum período -> deve aparecer como UC_AUSENTE_NA_GESTAO."""
+    import logic.services.sync_service as sync
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    monkeypatch.setattr(sync, "CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr(sync, "PENDENCIAS_FILE", str(cache_dir / "pendencias.json"))
+    monkeypatch.setattr(sync, "PARQUET_FILE", str(cache_dir / "base.parquet"))
+    monkeypatch.setattr(sync, "BALANCO_LOCAL", str(cache_dir / "Balanco_Energetico.xlsm"))
+    monkeypatch.setattr(sync, "GESTAO_LOCAL", str(cache_dir / "gd_gestao.xlsx"))
+    
+    class MockExcelReader:
+        def __init__(self, *args, **kwargs):
+            self.df = pd.DataFrame({
+                "Referencia": ["2026-01-01"],
+                "No. UC": ["999"],
+                "Razao Social": ["Test 999"],
+                "CPF/CNPJ": ["555"],
+                "Status Pos-Faturamento": ["-"]
+            })
+    monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
+
+    # Gestao tem apenas UC 123
+    gestao_df = pd.DataFrame({
+        "Instalação": [123],
+        "Mês de Referência": ["01-2026"],
+        "Vencimento": ["10-02-2026"],
+        "Status": ["Pago"]
+    })
+    
+    gestao_io = io.BytesIO()
+    gestao_df.to_excel(gestao_io, index=False, engine='openpyxl')
+    
+    success, report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_io.getvalue())
+    assert success is True
+    assert report["total_ucs_sem_vencimento"] == 1
+    assert report["pendencias"][0]["tipo"] == "UC_AUSENTE_NA_GESTAO"
+
+def test_pendencias_vazio_quando_todos_completos(mock_balanco_df, tmp_path, monkeypatch):
+    """Quando todas as UCs têm match -> total_ucs_sem_vencimento == 0 e pendencias == []."""
+    import logic.services.sync_service as sync
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    monkeypatch.setattr(sync, "CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr(sync, "PENDENCIAS_FILE", str(cache_dir / "pendencias.json"))
+    monkeypatch.setattr(sync, "PARQUET_FILE", str(cache_dir / "base.parquet"))
+    monkeypatch.setattr(sync, "BALANCO_LOCAL", str(cache_dir / "Balanco_Energetico.xlsm"))
+    monkeypatch.setattr(sync, "GESTAO_LOCAL", str(cache_dir / "gd_gestao.xlsx"))
+    
+    class MockExcelReader:
+        def __init__(self, *args, **kwargs):
+            self.df = pd.DataFrame({
+                "Referencia": ["2026-01-01"],
+                "No. UC": ["123"],
+                "Razao Social": ["Test"],
+                "CPF/CNPJ": ["444"],
+                "Status Pos-Faturamento": ["-"]
+            })
+    monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
+
+    gestao_df = pd.DataFrame({
+        "Instalação": [123],
+        "Mês de Referência": ["01-2026"],
+        "Vencimento": ["10-02-2026"],
+        "Status": ["Pago"]
+    })
+    
+    gestao_io = io.BytesIO()
+    gestao_df.to_excel(gestao_io, index=False, engine='openpyxl')
+    
+    success, report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_io.getvalue())
+    assert success is True
+    assert report["total_ucs_sem_vencimento"] == 0
+    assert len(report["pendencias"]) == 0

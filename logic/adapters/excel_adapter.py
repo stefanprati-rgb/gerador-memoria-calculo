@@ -319,6 +319,14 @@ class TemplateExcelWriter:
         # Formato monetário brasileiro
         currency_format = '#,##0.00'
 
+        # Estilos para dados ausentes
+        missing_fill = openpyxl.styles.PatternFill(
+            start_color="FFE0B2", end_color="FFE0B2", fill_type="solid"
+        )
+        missing_font = openpyxl.styles.Font(
+            color="BF360C", bold=True
+        )
+
         for _, row in data_to_insert.iterrows():
             is_parent = bool(row.get(PARENT_ROW_FLAG, False))
 
@@ -366,6 +374,26 @@ class TemplateExcelWriter:
                                 new_cell.number_format = copy(ref_cell.number_format)
                             new_cell.protection = copy(ref_cell.protection)
                             new_cell.alignment = copy(ref_cell.alignment)
+
+                    # Destaque de ausência (sobrescreve estilos anteriores se necessário)
+                    # Aplica-se a qualquer linha (pai ou filha) que tenha campos críticos vazios
+                    is_empty = val is None or str(val).strip().lower() in ["", "nan", "nat", "none"]
+                    if is_empty and base_col in {"Vencimento", "Status Pos-Faturamento"}:
+                        new_cell.fill = missing_fill
+                        new_cell.font = missing_font
+                        
+                        # Adicionar comentário na coluna No. UC (se disponível)
+                        if "No. UC" in template_headers:
+                            uc_idx = template_headers["No. UC"]
+                            uc_cell = ws.cell(row=current_row, column=uc_idx)
+                            if uc_cell.comment is None:
+                                from openpyxl.comments import Comment
+                                uc_cell.comment = Comment(
+                                    "⚠ Dado ausente na Gestão de Cobrança para este período",
+                                    "Sistema MC"
+                                )
+                                uc_cell.comment.width = 200
+                                uc_cell.comment.height = 50
 
             current_row += 1
 

@@ -6,9 +6,14 @@ import time
 import streamlit as st
 
 from config.settings import settings
-from logic.services.sync_service import build_consolidated_cache_from_uploads, build_consolidated_cache_from_local_network
+from logic.services.sync_service import (
+    build_consolidated_cache_from_uploads, 
+    build_consolidated_cache_from_local_network,
+    get_pendencias
+)
 from logic.adapters.firebase_adapter import FirebaseAdapter
 import os
+import pandas as pd
 
 
 def render_admin_panel():
@@ -25,8 +30,8 @@ def render_admin_panel():
                 
                 if st.button("📥 Atualizar Bases Diretamente", use_container_width=True, type="primary"):
                     with st.spinner("Puxando arquivo ultrarrápido da rede local..."):
-                        if build_consolidated_cache_from_local_network(path_rede):
-                            st.cache_resource.clear()
+                        success, _ = build_consolidated_cache_from_local_network(path_rede)
+                        if success:
                             st.success("✅ Base sincronizada da rede com sucesso!")
                             time.sleep(2)
                             st.rerun()
@@ -57,10 +62,41 @@ def render_admin_panel():
                     
                     # Processar localmente (Local First) + backup opcional no Firebase
                     gestao_bytes = gestao_up.getvalue()
-                    if build_consolidated_cache_from_uploads(balanco_up.getvalue(), gestao_bytes, fb):
-                        st.cache_resource.clear()
+                    success, _ = build_consolidated_cache_from_uploads(balanco_up.getvalue(), gestao_bytes, fb)
+                    if success:
                         st.success("✅ Bases processadas com sucesso!")
                         time.sleep(2)
                         st.rerun()
                     else:
                         st.error("Erro interno ao gerar o cache consolidado. Verifique os logs.")
+
+            # === FEATURE: Relatório de Pendências ===
+            st.markdown("---")
+            st.subheader("📋 Pendências de Dados")
+            report = get_pendencias()
+            
+            if report is None:
+                st.info("Nenhuma sincronização realizada ainda.")
+            else:
+                total = report.get("total_ucs_sem_vencimento", 0)
+                if total == 0:
+                    st.success("✅ Todos os dados estão completos.")
+                else:
+                    st.warning(f"⚠ Detectadas {total} faturas sem Vencimento.")
+                    
+                    df_pend = pd.DataFrame(report["pendencias"])
+                    if not df_pend.empty:
+                        # Ordenar por tipo depois por referencia
+                        df_pend = df_pend.sort_values(by=["tipo", "referencia"])
+                        st.dataframe(
+                            df_pend[["no_uc", "razao_social", "referencia", "tipo"]],
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                
+                # Exibir data da verificação
+                try:
+                    dt_gen = pd.to_datetime(report["gerado_em"]).strftime("%d/%m/%Y às %H:%M")
+                    st.caption(f"Última verificação: {dt_gen}")
+                except:
+                    pass

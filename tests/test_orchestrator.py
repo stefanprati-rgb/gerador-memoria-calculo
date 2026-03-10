@@ -174,3 +174,53 @@ class TestGenerateMultiple:
 
         result = orch.generate_multiple(groups)
         assert result is None
+
+
+class TestIncompleteData:
+    """Testes para identificação de faturas sem correspondência na gestão."""
+
+    def test_check_incomplete_rows_detecta_ausentes(self, sample_base_xlsx, sample_template_xlsx, monkeypatch):
+        """Deve detectar registros sem Vencimento (NaN)."""
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+        
+        # Injetar Vencimento como NaN no reader mockado para simular falta de match
+        import logic.adapters.excel_adapter as adapters
+        def mock_filter_data(*args, **kwargs):
+            import pandas as pd
+            df = pd.DataFrame({
+                "No. UC": ["4003444738"],
+                "Referencia": ["01/2026"],
+                "Razao Social": ["Cliente Teste"],
+                "Vencimento": [pd.NA], # Simula ausência na gestão
+                "Status Pos-Faturamento": [pd.NA]
+            })
+            return df
+        
+        monkeypatch.setattr(orch.reader, "filter_data", mock_filter_data)
+        
+        info = orch.check_incomplete_rows(["Qualquer"], ["01/2026"])
+        
+        assert info["registros_incompletos"] == 1
+        assert len(info["ucs_afetadas"]) == 1
+        assert info["ucs_afetadas"][0]["no_uc"] == "4003444738"
+
+    def test_check_incomplete_rows_retorna_vazio_quando_completo(self, sample_base_xlsx, sample_template_xlsx, monkeypatch):
+        """Deve retornar zero incompletos quando todos têm Vencimento."""
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+        
+        def mock_filter_data(*args, **kwargs):
+            import pandas as pd
+            return pd.DataFrame({
+                "No. UC": ["4003444738"],
+                "Referencia": ["01/2026"],
+                "Razao Social": ["Cliente Teste"],
+                "Vencimento": ["10/02/2026"], # Completo
+                "Status Pos-Faturamento": ["Pago"]
+            })
+        
+        monkeypatch.setattr(orch.reader, "filter_data", mock_filter_data)
+        
+        info = orch.check_incomplete_rows(["Qualquer"], ["01/2026"])
+        
+        assert info["registros_incompletos"] == 0
+        assert len(info["ucs_afetadas"]) == 0

@@ -40,6 +40,33 @@ class Orchestrator:
         filtered_df = self.reader.filter_data(selected_clients, selected_periods)
         return len(filtered_df)
 
+    def check_incomplete_rows(self, selected_clients: List[str], selected_periods: List[str]) -> Dict[str, Any]:
+        """
+        Identifica registros que não possuem Vencimento (não encontrados na Gestão).
+        Retorna dicionário com estatísticas e lista de UCs afetadas.
+        """
+        df = self.reader.filter_data(selected_clients, selected_periods)
+        if df.empty:
+            return {"total_registros": 0, "registros_incompletos": 0, "ucs_afetadas": []}
+            
+        # Vencimento é a coluna chave para identificar falta de match com a gestão
+        mask_incomplete = df["Vencimento"].isna() | (df["Vencimento"].astype(str).str.strip().str.lower().isin(["", "nan", "nat", "none"]))
+        incomplete_df = df[mask_incomplete]
+        
+        ucs_afetadas = []
+        for _, row in incomplete_df.iterrows():
+            ucs_afetadas.append({
+                "no_uc": str(row["No. UC"]),
+                "referencia": str(row["Referencia"]),
+                "razao_social": str(row["Razao Social"])
+            })
+            
+        return {
+            "total_registros": len(df),
+            "registros_incompletos": len(incomplete_df),
+            "ucs_afetadas": ucs_afetadas
+        }
+
     def _apply_grouping(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Aplica a lógica de agrupamento de faturas.

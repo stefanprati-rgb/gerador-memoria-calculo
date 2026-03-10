@@ -170,13 +170,44 @@ def _render_record_preview(group: Group, orch: Any) -> None:
 
 def render_generation_button(orch: Any) -> None:
     """Lógica do botão primário para geração em lote ou único file de memoria de calculo."""
-    if st.button("⚡ Gerar Planilhas Selecionadas", type="primary", use_container_width=True):
-        valid_groups = [g for g in st.session_state.groups if g.clients and g.periods]
-        
-        if not valid_groups:
-            st.warning("É necessário que pelo menos um grupo tenha Clientes e Períodos selecionados.")
-            return
+    valid_groups = [g for g in st.session_state.groups if g.clients and g.periods]
+    
+    if not valid_groups:
+        st.button("⚡ Gerar Planilhas Selecionadas", type="primary", use_container_width=True, disabled=True)
+        st.info("Adicione clientes e períodos aos grupos para habilitar a geração.")
+        return
 
+    # 1. Verificar faturas incompletas em todos os grupos
+    alerts = []
+    for g in valid_groups:
+        incomplete_info = orch.check_incomplete_rows(g.clients, g.periods)
+        if incomplete_info["registros_incompletos"] > 0:
+            alerts.append({
+                "group_name": g.name,
+                "count": incomplete_info["registros_incompletos"],
+                "details": incomplete_info["ucs_afetadas"]
+            })
+    
+    can_proceed = True
+    if alerts:
+        with st.container(border=True):
+            st.warning("### ⚠ Dados incompletos detectados")
+            st.write("Algumas faturas no Balanço não possuem correspondente na Gestão de Cobrança (Vencimento ausente).")
+            
+            for alert in alerts:
+                with st.expander(f"Grupo: {alert['group_name']} — {alert['count']} pendências"):
+                    st.dataframe(alert["details"], use_container_width=True)
+            
+            confirm = st.checkbox(
+                "Estou ciente dos dados ausentes e quero gerar mesmo assim",
+                key="confirm_incomplete_generation"
+            )
+            if not confirm:
+                can_proceed = False
+                st.info("Você precisa confirmar que está ciente para prosseguir.")
+
+    # 2. Botão de geração (desabilitado se houver pendências não confirmadas)
+    if st.button("⚡ Gerar Planilhas Selecionadas", type="primary", use_container_width=True, disabled=not can_proceed):
         start_time = time.time()
         
         if len(valid_groups) == 1:

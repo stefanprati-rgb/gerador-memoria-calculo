@@ -54,13 +54,22 @@ if not os.path.exists(template_file):
 # --- LÓGICA PRINCIPAL ---
 
 @st.cache_resource(show_spinner="Carregando base de dados...")
-def load_orchestrator_v3(base_path: str, template_path: str, sheet: str):
-    """Cria o Orchestrator cacheado para evitar releitura da planilha em cada rerun."""
+def load_orchestrator_v3(base_path: str, template_path: str, sheet: str, _mtime: float):
+    """
+    Cria o Orchestrator cacheado.
+    _mtime é o timestamp de modificação do parquet — prefixado com _
+    para o Streamlit não tentar fazer hash do valor diretamente.
+    """
     return Orchestrator(base_path, template_path, sheet_name=sheet)
 
 if base_file and template_file:
     try:
-        orch = load_orchestrator_v3(base_file, template_file, settings.base_sheet_name)
+        # Timestamp de modificação para invalidar cache se o arquivo mudar
+        _parquet_mtime = os.path.getmtime(base_file) if os.path.exists(base_file) else 0.0
+        
+        orch = load_orchestrator_v3(
+            base_file, template_file, settings.base_sheet_name, _parquet_mtime
+        )
             
         available_periods = orch.get_available_periods()
         available_clients = orch.get_available_clients()

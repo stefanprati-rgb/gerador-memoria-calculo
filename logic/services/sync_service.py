@@ -6,6 +6,7 @@ Opcionalmente, envia cópias para o Firebase Cloud Storage como backup.
 import os
 import logging
 import pandas as pd
+import json
 from datetime import datetime
 from logic.adapters.excel_adapter import BaseExcelReader
 from config.settings import settings
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = os.path.join("data", "cache")
 PARQUET_FILE = os.path.join(CACHE_DIR, "base_consolidada.parquet")
+PENDENCIAS_FILE = os.path.join(CACHE_DIR, "pendencias.json")
 
 BALANCO_REMOTE = "bases/Balanco_Energetico_Raizen.xlsm"
 GESTAO_REMOTE = "bases/gd_gestao_cobranca.xlsx"
@@ -29,7 +31,7 @@ _TEXT_COLUMNS = {
 }
 
 
-def build_consolidated_cache_from_uploads(balanco_bytes: bytes, gestao_bytes: bytes | None = None, firebase_client=None) -> bool:
+def build_consolidated_cache_from_uploads(balanco_bytes: bytes, gestao_bytes: bytes | None = None, firebase_client=None) -> tuple[bool, dict | None]:
     """
     Recebe os bytes dos arquivos de upload, salva localmente, faz o merge e gera Parquet.
     Opcionalmente tenta fazer backup no Firebase Storage.
@@ -67,7 +69,7 @@ def build_consolidated_cache_from_uploads(balanco_bytes: bytes, gestao_bytes: by
 
     return _process_dataframes(BALANCO_LOCAL, gestao_bytes, GESTAO_LOCAL)
 
-def build_consolidated_cache_from_local_network(network_path: str) -> bool:
+def build_consolidated_cache_from_local_network(network_path: str) -> tuple[bool, dict | None]:
     """
     Lê a planilha central do Balanço Energético diretamente do caminho do usuário na rede local/OneDrive,
     dispensando a necessidade de upload de um arquivo de ~12MB cada vez.
@@ -88,11 +90,11 @@ def build_consolidated_cache_from_local_network(network_path: str) -> bool:
         logger.info("Sucesso na importação da rede local!")
     except Exception as e:
         logger.error(f"Falha ao ler da rede local: {e}")
-        return False
+        return False, None
         
     return _process_dataframes(BALANCO_LOCAL, None, None)
 
-def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str) -> bool:
+def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_path: str | None) -> tuple[bool, dict | None]:
     """Motor central que efetivamente cria o Merge e Parquet a partir dos paths ou bytes providenciados."""
     # 3. Ler Balanço Energético
     logger.info("Iniciando leitura do Balanço Energético...")
@@ -101,12 +103,13 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
         df_balanco = reader_balanco.df
     except Exception as e:
         logger.error("Erro ao ler Balanço Energético local: %s", e)
-        return False
+        return False, None
 
     df_consolidado = df_balanco.copy()
 
     # 4. Cruzamento com a Gestão de Cobrança (se disponível)
-    if gestao_bytes and os.path.exists(GESTAO_LOCAL):
+    report = None
+    if gestao_bytes and gestao_path and os.path.exists(gestao_path):
         logger.info("Lendo base de Gestão para enriquecimento (Vencimento e Status)...")
         try:
             gestao_headers = pd.read_excel(GESTAO_LOCAL, nrows=0).columns.tolist()
@@ -140,6 +143,10 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
                     if s.endswith(".0"): s = s[:-2]
                     s = ''.join(filter(str.isdigit, s))
                     return s
+                
+                # 2. Normalizar e colher conjunto total de UCs na gestão para o relatório
+                df_gestao["No. UC_norm"] = df_gestao[uc_col].apply(normalize_uc)
+                all_gestao_ucs = set(df_gestao["No. UC_norm"].unique())
 
                 def parse_ref(val):
                     if pd.isna(val): return pd.NaT
@@ -155,8 +162,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
                         pass
                     return pd.to_datetime(val, errors="coerce")
 
-                # 2. Normalizar chaves em ambas as bases para detecção de cancelados
-                df_gestao["No. UC_norm"] = df_gestao[uc_col].apply(normalize_uc)
+                # 3. Normalizar chaves em ambas as bases para detecção de cancelados
                 df_consolidado["No. UC_norm"] = df_consolidado["No. UC"].apply(normalize_uc)
                 
                 ref_merge_col = "Referencia_merge"
@@ -275,7 +281,49 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
                 elif "Status Pos-Faturamento_gestao" in df_consolidado.columns:
                     df_consolidado.rename(columns={"Status Pos-Faturamento_gestao": "Status Pos-Faturamento"}, inplace=True)
                     
-                # Limpar colunas auxiliares de merge
+                # Limpar colunas auxiliares de merge (mantendo No. UC_norm para o relatório se necessário)
+                
+                # 8. Detecção de Pendências
+                mask_missing = df_consolidado["Vencimento"].isna()
+                if mask_missing.any():
+                    missing_df = df_consolidado[mask_missing].copy()
+                    pendencias = []
+                    
+                    for _, row in missing_df.iterrows():
+                        uc_norm = row["No. UC_norm"]
+                        tipo = "UC_AUSENTE_NA_GESTAO" if uc_norm not in all_gestao_ucs else "PERIODO_NAO_LANCADO"
+                        
+                        pendencias.append({
+                            "no_uc": str(row["No. UC"]),
+                            "referencia": str(row["Referencia"]),
+                            "razao_social": str(row["Razao Social"]),
+                            "cpf_cnpj": str(row["CPF/CNPJ"]),
+                            "tipo": tipo
+                        })
+                    
+                    report = {
+                        "gerado_em": datetime.now().isoformat(),
+                        "total_ucs_sem_vencimento": len(pendencias),
+                        "pendencias": pendencias
+                    }
+                    
+                    try:
+                        with open(PENDENCIAS_FILE, "w", encoding="utf-8") as f:
+                            json.dump(report, f, indent=2, ensure_ascii=False)
+                        logger.info("Relatório de pendências salvo com %d itens.", len(pendencias))
+                    except Exception as e:
+                        logger.warning("Erro ao salvar pendencias.json: %s", e)
+                else:
+                    report = {
+                        "gerado_em": datetime.now().isoformat(),
+                        "total_ucs_sem_vencimento": 0,
+                        "pendencias": []
+                    }
+                    try:
+                        with open(PENDENCIAS_FILE, "w", encoding="utf-8") as f:
+                            json.dump(report, f, indent=2, ensure_ascii=False)
+                    except: pass
+
                 drop_aux = ["No. UC_norm", "Referencia_merge"]
                 df_consolidado.drop(columns=[c for c in drop_aux if c in df_consolidado.columns], inplace=True)
             else:
@@ -288,6 +336,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
             logger.warning("Falha ao ler ou cruzar base de Gestão (continuará apenas com Balanço). Erro: %s", e)
             import traceback
             logger.debug(traceback.format_exc())
+            report = None
     else:
         logger.info("Base de Gestão não disponível. Seguindo sem Vencimento/Status extra.")
 
@@ -312,10 +361,10 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes, gestao_path: str
     try:
         df_consolidado.to_parquet(PARQUET_FILE, engine="fastparquet", index=False)
         logger.info("Cache consolidado salvo com sucesso: %s (%d registros)", PARQUET_FILE, len(df_consolidado))
-        return True
+        return True, report
     except Exception as e:
         logger.error("Erro ao salvar Parquet: %s", e)
-        return False
+        return False, report
 
 
 def get_parquet_dataframe() -> pd.DataFrame:
@@ -331,3 +380,15 @@ def get_cache_update_time() -> str:
         mtime = os.path.getmtime(PARQUET_FILE)
         return datetime.fromtimestamp(mtime).strftime("%d/%m/%Y às %H:%M")
     return "Nunca"
+
+
+def get_pendencias() -> dict | None:
+    """Retorna o relatório de pendências ou None se não existir."""
+    if not os.path.exists(PENDENCIAS_FILE):
+        return None
+    try:
+        with open(PENDENCIAS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning("Erro ao ler pendencias.json: %s", e)
+        return None
