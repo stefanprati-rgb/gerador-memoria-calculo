@@ -13,7 +13,7 @@ with open(os.path.join(CACHE_DIR, "gd_gestao.xlsx"), "rb") as f:
 
 print(f"Balanco: {len(balanco_bytes):,} bytes | Gestao: {len(gestao_bytes):,} bytes")
 print("Iniciando sync (sem Firebase)...")
-result = build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, firebase_client=None)
+result, report = build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, firebase_client=None)
 
 if result:
     print("SUCESSO!")

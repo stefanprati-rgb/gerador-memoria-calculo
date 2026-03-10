@@ -1,0 +1,196 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.2, pluggy-1.5.0 -- C:\Users\Stefan_Pratti\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projetos\memoria_de_calculo
+plugins: anyio-4.8.0, asyncio-1.3.0, cov-7.0.0, respx-0.22.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/test_sync_service.py::test_sync_service_merge_logic 
+
+=== RESULTADO DO MERGE ===
+         No. UC  Referencia  Vencimento Status Pos-Faturamento
+0  4.207427e+07  2026-01-01  10-02-2026                   Pago
+1  4.207427e+07  2026-02-01  10-03-2026               Atrasado
+2  4.000476e+09  2026-02-01  20-03-2026                   Pago
+==========================
+
+
+--- DEBUG MASKS ---
+Referencia                 object
+No. UC                    float64
+CPF/CNPJ                    int64
+Razao Social               object
+Distribuidora              object
+Cred. Consumido Raizen      int64
+Desconto Contratado         int64
+Status Pos-Faturamento     object
+Vencimento                 object
+dtype: object
+UC Match: 0     True
+1     True
+2    False
+Name: No. UC, dtype: bool
+Ref Match Fev: 0    False
+1     True
+2     True
+Name: Referencia, dtype: bool
+Combined Fev Match: 0    False
+1     True
+2    False
+dtype: bool
+Rows for Fev:
+    Referencia      No. UC  ...  Status Pos-Faturamento  Vencimento
+1  2026-02-01  42074274.0  ...                Atrasado  10-03-2026
+
+[1 rows x 9 columns]
+-------------------
+
+FAILED
+
+================================== FAILURES ===================================
+________________________ test_sync_service_merge_logic ________________________
+
+mock_balanco_df =    Referencia        No. UC  ... Desconto Contratado Status Pos-Faturamento
+0  2026-01-01    42074274.0  ...          ...            Em aberto
+3  2026-02-01  4000476449.0  ...                  10              Em aberto
+
+[4 rows x 8 columns]
+mock_gestao_df =    InstalaþÒo MÛs de ReferÛncia  ... Cancelada Data de Cancelamento
+0    42074274           01-2026  ...       NÒo    ...     Sim           10-02-2026
+3  4000476449           02-2026  ...       NÒo                  NaN
+
+[4 rows x 6 columns]
+tmp_path = WindowsPath('C:/Users/Stefan_Pratti/AppData/Local/Temp/pytest-of-Stefan_Pratti/pytest-27/test_sync_service_merge_logic0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002620E8BA9E0>
+
+    def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, monkeypatch):
+        """Testa se a normalizaþÒo de UC e perÝodo funciona e se cancelados sÒo ignorados."""
+        # Redefine os caminhos temporßrios
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        parquet_path = cache_dir / "base_consolidada.parquet"
+    
+        # Monkeypatching as constantes no sync_service
+        import logic.services.sync_service as sync
+        monkeypatch.setattr(sync, "CACHE_DIR", str(cache_dir))
+        monkeypatch.setattr(sync, "PARQUET_FILE", str(parquet_path))
+        monkeypatch.setattr(sync, "BALANCO_LOCAL", str(cache_dir / "Balanco_Energetico.xlsm"))
+        monkeypatch.setattr(sync, "GESTAO_LOCAL", str(cache_dir / "gd_gestao.xlsx"))
+    
+        # Para o teste nÒo ler o disco, precisamos mockar as leituras do Pandas ou ExcelAdapter
+        # Primeiro salvamos os mocks no temp dir para ele poder ler normalmente!
+    
+        # Criar um BaseExcelReader mockado que jß retorna o mock_balanco_df
+        class MockExcelReader:
+            def __init__(self, *args, **kwargs):
+                self.df = mock_balanco_df.copy()
+    
+        monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
+    
+        # Para o gestao, a leitura do excel Ú direta com pandas (nÒo usa adapter).
+        # Precisamos gerar bytes de um excel real para passar na funþÒo!
+        balanco_bytes = b"fake_balanco"  # adapter ignorarß porque mockamos a classe
+    
+        gestao_io = io.BytesIO()
+        mock_gestao_df.to_excel(gestao_io, index=False, engine='openpyxl')
+        gestao_bytes = gestao_io.getvalue()
+    
+        # Executa a funþÒo passando os bytes (que serÒo salvos nos paths que mockamos e lidos depois)
+        success = sync.build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, firebase_client=None)
+    
+        assert success is True
+        assert parquet_path.exists()
+    
+        # Validaþ§es no parquet gerado
+        df_result = pd.read_parquet(parquet_path, engine="fastparquet")
+        print("\n\n=== RESULTADO DO MERGE ===")
+        print(df_result[["No. UC", "Referencia", "Vencimento", "Status Pos-Faturamento"]].to_string())
+        print("==========================\n")
+    
+        # Converter a coluna para string YYYY-MM-DD para o filtro do teste funcionar
+        df_result["Referencia"] = pd.to_datetime(df_result["Referencia"]).dt.strftime('%Y-%m-%d')
+    
+        # Importante: O sync_service tenta converter colunas object para numerico, entao 'No. UC' vira float.
+        df_result["No. UC"] = pd.to_numeric(df_result["No. UC"], errors="coerce")
+    
+        print("\n--- DEBUG MASKS ---")
+        print(df_result.dtypes)
+        print("UC Match:", df_result["No. UC"] == 42074274.0)
+        print("Ref Match Fev:", df_result["Referencia"] == "2026-02-01")
+        mask_fev = (df_result["No. UC"] == 42074274.0) & (df_result["Referencia"] == "2026-02-01")
+        print("Combined Fev Match:", mask_fev)
+        print("Rows for Fev:\n", df_result[mask_fev])
+        print("-------------------\n")
+    
+        # 1. UC 42074274.0 deve casar com o inteiro 42074274
+        # E o merge por perodo deve garantir:
+        #   Jan/2026 -> Vence 10-02-2026, Pago
+        #   Fev/2026 -> Vence 10-03-2026, Atrasado
+        cliente_a_jan = df_result[(df_result["No. UC"] == 42074274.0) & (df_result["Referencia"] == "2026-01-01")].iloc[0]
+        cliente_a_fev = df_result[mask_fev].iloc[0]
+    
+        assert cliente_a_jan["Vencimento"] == "10-02-2026"
+        assert cliente_a_jan["Status Pos-Faturamento"] == "Pago"
+    
+        assert cliente_a_fev["Vencimento"] == "10-03-2026"
+        assert cliente_a_fev["Status Pos-Faturamento"] == "Atrasado"
+    
+        # 2. Cliente B foi "Cancelado" na GestÒo ("Sim"). Portanto, ele N├O deve receber o Vencimento que lß existe.
+        # Deverß receber nulo (convertido para string 'None' ou '').
+>       cliente_b = df_result[(df_result["No. UC"] == 5143128.0)].iloc[0]
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_sync_service.py:114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Stefan_Pratti\AppData\Local\Programs\Python\Python313\Lib\site-packages\pandas\core\indexing.py:1191: in __getitem__
+    return self._getitem_axis(maybe_callable, axis=axis)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Stefan_Pratti\AppData\Local\Programs\Python\Python313\Lib\site-packages\pandas\core\indexing.py:1752: in _getitem_axis
+    self._validate_integer(key, axis)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <pandas.core.indexing._iLocIndexer object at 0x000002620FACAF30>, key = 0
+axis = 0
+
+    def _validate_integer(self, key: int | np.integer, axis: AxisInt) -> None:
+        """
+        Check that 'key' is a valid position in the desired axis.
+    
+        Parameters
+        ----------
+        key : int
+            Requested position.
+        axis : int
+            Desired axis.
+    
+        Raises
+        ------
+        IndexError
+            If 'key' is not a valid position in axis 'axis'.
+        """
+        len_axis = len(self.obj._get_axis(axis))
+        if key >= len_axis or key < -len_axis:
+>           raise IndexError("single positional indexer is out-of-bounds")
+E           IndexError: single positional indexer is out-of-bounds
+
+C:\Users\Stefan_Pratti\AppData\Local\Programs\Python\Python313\Lib\site-packages\pandas\core\indexing.py:1685: IndexError
+============================== warnings summary ===============================
+tests/test_sync_service.py::test_sync_service_merge_logic
+tests/test_sync_service.py::test_sync_service_merge_logic
+tests/test_sync_service.py::test_sync_service_merge_logic
+tests/test_sync_service.py::test_sync_service_merge_logic
+tests/test_sync_service.py::test_sync_service_merge_logic
+tests/test_sync_service.py::test_sync_service_merge_logic
+tests/test_sync_service.py::test_sync_service_merge_logic
+  C:\Users\Stefan_Pratti\AppData\Local\Programs\Python\Python313\Lib\site-packages\openpyxl\packaging\core.py:99: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.datetime.utcnow()
+
+tests/test_sync_service.py::test_sync_service_merge_logic
+  C:\Users\Stefan_Pratti\AppData\Local\Programs\Python\Python313\Lib\site-packages\openpyxl\writer\excel.py:292: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    workbook.properties.modified = datetime.datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_sync_service.py::test_sync_service_merge_logic - IndexError...
+======================== 1 failed, 8 warnings in 1.54s ========================
