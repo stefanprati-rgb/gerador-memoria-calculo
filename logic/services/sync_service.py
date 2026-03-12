@@ -168,7 +168,13 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                 ref_merge_col = "Referencia_merge"
                 if ref_col:
                     df_gestao[ref_merge_col] = df_gestao[ref_col].apply(parse_ref)
-                    df_consolidado[ref_merge_col] = pd.to_datetime(df_consolidado["Referencia"], errors="coerce").dt.to_period('M').dt.to_timestamp()
+                    
+                    # Garantir que a Referencia do Balanço seja tratada como datetime corretamente,
+                    # respeitando o formato DD/MM/YYYY se for string.
+                    ref_series = df_consolidado["Referencia"]
+                    # Tenta converter explicitamente assumindo dia/mês/ano se for string text
+                    ref_dt = pd.to_datetime(ref_series, errors="coerce", dayfirst=True)
+                    df_consolidado[ref_merge_col] = ref_dt.dt.to_period('M').dt.to_timestamp()
 
                 # 3. Identificar Cancelados (para remoção total do Balanço)
                 mask_canceled = pd.Series(False, index=df_gestao.index)

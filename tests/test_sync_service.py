@@ -14,7 +14,7 @@ from logic.services.sync_service import build_consolidated_cache_from_uploads
 def mock_balanco_df():
     """Simula a aba Balanco Operacional com UCs sujas."""
     return pd.DataFrame({
-        "Referencia": ["2026-01-01", "2026-02-01", "2026-01-01", "2026-02-01"],
+        "Referencia": ["01/01/2026", "01/02/2026", "01/01/2026", "01/02/2026"],
         "No. UC": ["42074274.0", "42074274.0", "5143128.0", "4000476449.0"],
         "CPF/CNPJ": ["1111", "1111", "2222", "3333"],
         "Razao Social": ["Cliente A", "Cliente A", "Cliente B", "Cliente C"],
@@ -81,8 +81,9 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, mon
     print(df_result[["No. UC", "Referencia", "Vencimento", "Status Pos-Faturamento"]].to_string())
     print("==========================\n")
     
-    # Converter a coluna para string YYYY-MM-DD para o filtro do teste funcionar
-    df_result["Referencia"] = pd.to_datetime(df_result["Referencia"]).dt.strftime('%Y-%m-%d')
+    # Converter a coluna para string YYYY-MM-DD para simplificar o teste, mas o pandas salva
+    # datas do fastparquet. A Referencia vem como string "01/01/2026" do nosso mock!
+    # O df_result["Referencia"] fica "01/01/2026".
     
     # Importante: O sync_service tenta converter colunas object para numerico, entao 'No. UC' vira float.
     df_result["No. UC"] = pd.to_numeric(df_result["No. UC"], errors="coerce")
@@ -90,8 +91,8 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, mon
     print("\n--- DEBUG MASKS ---")
     print(df_result.dtypes)
     print("UC Match:", df_result["No. UC"] == 42074274.0)
-    print("Ref Match Fev:", df_result["Referencia"] == "2026-02-01")
-    mask_fev = (df_result["No. UC"] == 42074274.0) & (df_result["Referencia"] == "2026-02-01")
+    print("Ref Match Fev:", df_result["Referencia"] == "01/02/2026")
+    mask_fev = (df_result["No. UC"] == 42074274.0) & (df_result["Referencia"] == "01/02/2026")
     print("Combined Fev Match:", mask_fev)
     print("Rows for Fev:\n", df_result[mask_fev])
     print("-------------------\n")
@@ -100,7 +101,7 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, mon
     # E o merge por perodo deve garantir:
     #   Jan/2026 -> Vence 10-02-2026, Pago
     #   Fev/2026 -> Vence 10-03-2026, Atrasado
-    cliente_a_jan = df_result[(df_result["No. UC"] == 42074274.0) & (df_result["Referencia"] == "2026-01-01")].iloc[0]
+    cliente_a_jan = df_result[(df_result["No. UC"] == 42074274.0) & (df_result["Referencia"] == "01/01/2026")].iloc[0]
     cliente_a_fev = df_result[mask_fev].iloc[0]
     
     assert cliente_a_jan["Vencimento"] == "10-02-2026"
