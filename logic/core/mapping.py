@@ -56,6 +56,20 @@ ENRICHMENT_MAPPING = {
     "Vencimento": "Vencimento",
 }
 
+# --- MAPEAMENTO ESPECÍFICO GRUPO 1 (Relatório Consolidado) ---
+# Este mapeamento é usado quando o Orchestrator detecta clientes de Alta Tensão
+GRUPO_1_MAPPING = {
+    # 'Coluna na base' -> 'Coluna no Excel de Saída'
+    "No. UC": "Instalação",
+    "Razao Social": "Nome",
+    "Referencia": "Referência",
+    "Vencimento": "Vencimento",
+    "Valor_gestao": "Valor R$",
+    "Status Pos-Faturamento": "Status",
+    "Base_gestao": "Base para cálculo",
+    "Boleto Raizen": "Faturamento",
+}
+
 # Coluna usada para identificar clientes na interface (seleção por nome)
 CLIENT_COLUMN = "Razao Social"
 
