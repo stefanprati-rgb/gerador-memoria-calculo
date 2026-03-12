@@ -276,38 +276,59 @@ class TemplateExcelWriter:
         wb = openpyxl.load_workbook(self.template_source)
         ws = wb.active
 
-        # Encontrar os headers na linha 1, aplicando strip para normalizar.
-        # Também atualiza os headers físicos para os nomes da fonte se necessário limpar espaços extras ou legados.
+        # 1. Mapear cabeçalhos físicos do template para as colunas da fonte
+        # Queremos saber: "Em qual coluna física (idx) eu coloco o dado X?"
         header_row_idx = 1
-        template_headers = {}
+        template_col_to_idx = {} # {logical_source_name: column_index}
         
-        # Cria versão normalizada do mapa legado para busca insensível a espaços/casing
-        normalized_legacy_map = {k.strip().lower(): v for k, v in self.LEGACY_HEADER_MAP.items()}
+        # Mapa reverso do Mapping: {template_target_name: logical_source_name}
+        # Ex: {"Instalação": "CPF/CNPJ"}
+        target_to_source = {v.strip(): k for k, v in column_mapping.items()}
         
+        # Normalização para busca
+        norm_legacy = {k.strip().lower(): v for k, v in self.LEGACY_HEADER_MAP.items()}
+        norm_source = {k.strip().lower(): k for k in column_mapping.keys()}
+
         for idx, cell in enumerate(ws[header_row_idx], 1):
-            if cell.value:
-                original_val = str(cell.value)
-                search_key = original_val.strip().lower()
-                
-                # Se for um nome legado (mesmo escrito estranho), atualiza para o novo nome da fonte
-                if search_key in normalized_legacy_map:
-                    new_name = normalized_legacy_map[search_key]
-                    cell.value = new_name  # Sobrescreve o header no arquivo de saída
-                    template_headers[new_name] = idx
-                else:
-                    # Uso o clean_val para preencher em vez do original_val que pode ter espaços flutuando
-                    clean_val = original_val.strip()
-                    template_headers[clean_val] = idx
-                    # IMPORTANTE: Força a reescrita no arquivo removendo os espaços em branco que existiam na fonte ("Vencimento " -> "Vencimento")
-                    cell.value = clean_val
+            if not cell.value: continue
+            
+            orig_val = str(cell.value).strip()
+            search_key = orig_val.lower()
+            
+            # Tentar encontrar qual coluna lógica da fonte este cabeçalho representa
+            logical_source = None
+            
+            if search_key in norm_source: # Nome exato (ex: "CPF/CNPJ")
+                logical_source = norm_source[search_key]
+            elif search_key in norm_legacy: # Nome legado (ex: "CNPJ" -> "CPF/CNPJ")
+                logical_source = norm_legacy[search_key]
+            elif search_key in {k.lower(): v for k, v in target_to_source.items()}: # Já é o nome de destino (ex: "Instalação")
+                logical_source = {k.lower(): v for k, v in target_to_source.items()}[search_key]
+
+            if logical_source:
+                template_col_to_idx[logical_source] = idx
+                # RENOMEAR CABEÇALHO PARA O DESTINO DO MAPPING
+                new_label = column_mapping[logical_source]
+                cell.value = new_label
+        
+        # Se houver colunas no mapping que NÃO estão no template (ex: Vencimento ou novas colunas do Grupo 1)
+        # Adicionamos ao final
+        next_free_col = 1
+        for idx, cell in enumerate(ws[header_row_idx], 1):
+            if cell.value: next_free_col = idx + 1
+
+        for src_col, target_label in column_mapping.items():
+            if src_col not in template_col_to_idx:
+                # Adiciona nova coluna no final
+                new_cell = ws.cell(row=header_row_idx, column=next_free_col, value=target_label)
+                template_col_to_idx[src_col] = next_free_col
+                next_free_col += 1
 
         # Determinar a próxima linha vazia para inserir dados
         start_row = ws.max_row + 1
-
-        # Se o template tem pouca coisa, começar na linha 2
         if start_row <= 2 and ws.cell(row=2, column=1).value is None:
             start_row = 2
-
+        
         current_row = start_row
 
         # Estilos para a linha "Fatura Pai" — fundo amarelo visível
@@ -330,11 +351,8 @@ class TemplateExcelWriter:
         for _, row in data_to_insert.iterrows():
             is_parent = bool(row.get(PARENT_ROW_FLAG, False))
 
-            for base_col, template_col in column_mapping.items():
-                template_col_normalized = template_col.strip()
-
-                if base_col in row and template_col_normalized in template_headers:
-                    col_idx = template_headers[template_col_normalized]
+            for base_col, col_idx in template_col_to_idx.items():
+                if base_col in row:
                     val = row[base_col]
 
                     # Tratar NaNs
@@ -382,9 +400,10 @@ class TemplateExcelWriter:
                         new_cell.fill = missing_fill
                         new_cell.font = missing_font
                         
-                        # Adicionar comentário na coluna No. UC (se disponível)
-                        if "No. UC" in template_headers:
-                            uc_idx = template_headers["No. UC"]
+                        # Adicionar comentário na coluna No. UC ou Instalação (se disponível)
+                        uc_logical_col = "No. UC" if "No. UC" in template_col_to_idx else "CPF/CNPJ"
+                        if uc_logical_col in template_col_to_idx:
+                            uc_idx = template_col_to_idx[uc_logical_col]
                             uc_cell = ws.cell(row=current_row, column=uc_idx)
                             if uc_cell.comment is None:
                                 from openpyxl.comments import Comment

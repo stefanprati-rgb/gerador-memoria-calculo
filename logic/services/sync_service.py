@@ -118,222 +118,212 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             uc_col = header_map.get("instalação", header_map.get("uc", header_map.get("no. uc")))
             venc_col = header_map.get("vencimento", header_map.get("data de vencimento"))
             status_col = header_map.get("status", header_map.get("status financeiro"))
+            # Colunas financeiras da Gestão para o Grupo 1
+            base_calc_col = header_map.get("base para cálculo", header_map.get("base para calculo"))
+            valor_cob_col = header_map.get("valor da cobrança r$", 
+                                           header_map.get("valor da cobranca r$", 
+                                           header_map.get("valor da cobrança", 
+                                           header_map.get("valor da cobranca"))))
+            
             cancel_col = header_map.get("data de cancelamento")
+            ref_col = header_map.get("mês de referência", header_map.get("mes de referencia", header_map.get("referência", header_map.get("referencia"))))
+            cancelada_col = header_map.get("cancelada")
 
             cols_to_read = []
             if uc_col: cols_to_read.append(uc_col)
             if venc_col: cols_to_read.append(venc_col)
             if status_col: cols_to_read.append(status_col)
+            if base_calc_col: cols_to_read.append(base_calc_col)
+            if valor_cob_col: cols_to_read.append(valor_cob_col)
+            
             if cancel_col: cols_to_read.append(cancel_col)
+            if ref_col: cols_to_read.append(ref_col)
+            if cancelada_col: cols_to_read.append(cancelada_col)
 
-            if uc_col and (venc_col or status_col):
-                # Incluir Mês de Referência na leitura
-                ref_col = header_map.get("mês de referência", header_map.get("mes de referencia", header_map.get("referência", header_map.get("referencia"))))
-                cancelada_col = header_map.get("cancelada")
+            df_gestao = pd.read_excel(GESTAO_LOCAL, usecols=cols_to_read)
+
+            # 1. Definir auxiliares de normalização
+            def normalize_uc(val):
+                if pd.isna(val): return ""
+                s = str(val).strip()
+                if s.endswith(".0"): s = s[:-2]
+                s = ''.join(filter(str.isdigit, s))
+                return s
+            
+            # 2. Normalizar e colher conjunto total de UCs na gestão para o relatório
+            df_gestao["No. UC_norm"] = df_gestao[uc_col].apply(normalize_uc)
+            all_gestao_ucs = set(df_gestao["No. UC_norm"].unique())
+
+            def parse_ref(val):
+                if pd.isna(val): return pd.NaT
+                s = str(val).strip()
+                try:
+                    parts = s.replace("/", "-").split("-")
+                    if len(parts) == 2:
+                        if len(parts[0]) == 4: # YYYY-MM
+                            return pd.Timestamp(year=int(parts[0]), month=int(parts[1]), day=1)
+                        else: # MM-YYYY
+                            return pd.Timestamp(year=int(parts[1]), month=int(parts[0]), day=1)
+                except:
+                    pass
+                # Força dayfirst=True para evitar confusão entre 11/12 (Nov/Dez) e 12/11 (Dez/Nov)
+                dt = pd.to_datetime(val, errors="coerce", dayfirst=True)
+                if pd.notna(dt):
+                    return dt.replace(day=1)
+                return pd.NaT
+
+            # 3. Normalizar chaves em ambas as bases para detecção de cancelados
+            df_consolidado["No. UC_norm"] = df_consolidado["No. UC"].apply(normalize_uc)
+            
+            ref_merge_col = "Referencia_merge"
+            if ref_col:
+                df_gestao[ref_merge_col] = df_gestao[ref_col].apply(parse_ref)
                 
-                if ref_col: cols_to_read.append(ref_col)
-                if cancelada_col: cols_to_read.append(cancelada_col)
+                # Garantir que a Referencia do Balanço seja tratada como datetime corretamente,
+                # respeitando o formato DD/MM/YYYY se for string.
+                ref_series = df_consolidado["Referencia"]
+                # Tenta converter explicitamente assumindo dia/mês/ano se for string text
+                ref_dt = pd.to_datetime(ref_series, errors="coerce", dayfirst=True)
+                df_consolidado[ref_merge_col] = ref_dt.dt.to_period('M').dt.to_timestamp()
 
-                df_gestao = pd.read_excel(GESTAO_LOCAL, usecols=cols_to_read)
+            # REVERTIDO: Não removemos mais faturas do Balanço com base na Gestão (evitar "deduplicação assassina")
+            # Deixamos que apareçam e o usuário decida ou o status indique o problema.
+            pass
 
-                # 1. Definir auxiliares de normalização
-                def normalize_uc(val):
-                    if pd.isna(val): return ""
-                    s = str(val).strip()
-                    if s.endswith(".0"): s = s[:-2]
-                    s = ''.join(filter(str.isdigit, s))
-                    return s
-                
-                # 2. Normalizar e colher conjunto total de UCs na gestão para o relatório
-                df_gestao["No. UC_norm"] = df_gestao[uc_col].apply(normalize_uc)
-                all_gestao_ucs = set(df_gestao["No. UC_norm"].unique())
+            rename_dict = {}
+            if venc_col: rename_dict[venc_col] = "Vencimento"
+            if status_col: rename_dict[status_col] = "Status Pos-Faturamento_gestao"
+            if valor_cob_col: rename_dict[valor_cob_col] = "Valor_gestao"
+            if base_calc_col: rename_dict[base_calc_col] = "Base_gestao"
+            
+            # Remover colunas originais que não usaremos mais ou renomearemos
+            cols_to_drop = [uc_col]
+            if ref_col: cols_to_drop.append(ref_col)
+            if cancel_col: cols_to_drop.append(cancel_col)
+            if cancelada_col: cols_to_drop.append(cancelada_col)
+            
+            df_gestao = df_gestao.drop(columns=[c for c in cols_to_drop if c in df_gestao.columns])
+            df_gestao.rename(columns=rename_dict, inplace=True)
 
-                def parse_ref(val):
-                    if pd.isna(val): return pd.NaT
-                    s = str(val).strip()
-                    try:
-                        parts = s.replace("/", "-").split("-")
-                        if len(parts) == 2:
-                            if len(parts[0]) == 4: # YYYY-MM
-                                return pd.Timestamp(year=int(parts[0]), month=int(parts[1]), day=1)
-                            else: # MM-YYYY
-                                return pd.Timestamp(year=int(parts[1]), month=int(parts[0]), day=1)
-                    except:
-                        pass
-                    return pd.to_datetime(val, errors="coerce")
+            # Limpeza de valores numéricos na Gestão (R$ 1.234,56 -> 1234.56)
+            for col in ["Valor_gestao", "Base_gestao"]:
+                if col in df_gestao.columns:
+                    df_gestao[col] = df_gestao[col].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+                    df_gestao[col] = pd.to_numeric(df_gestao[col], errors="coerce")
 
-                # 3. Normalizar chaves em ambas as bases para detecção de cancelados
-                df_consolidado["No. UC_norm"] = df_consolidado["No. UC"].apply(normalize_uc)
-                
-                ref_merge_col = "Referencia_merge"
-                if ref_col:
-                    df_gestao[ref_merge_col] = df_gestao[ref_col].apply(parse_ref)
-                    
-                    # Garantir que a Referencia do Balanço seja tratada como datetime corretamente,
-                    # respeitando o formato DD/MM/YYYY se for string.
-                    ref_series = df_consolidado["Referencia"]
-                    # Tenta converter explicitamente assumindo dia/mês/ano se for string text
-                    ref_dt = pd.to_datetime(ref_series, errors="coerce", dayfirst=True)
-                    df_consolidado[ref_merge_col] = ref_dt.dt.to_period('M').dt.to_timestamp()
+            # 5. Realizar o Merge (Cruzamento)
+            merge_keys = ["No. UC_norm"]
+            if ref_merge_col in df_gestao.columns and ref_merge_col in df_consolidado.columns:
+                merge_keys.append(ref_merge_col)
+            
+            # Garantir que não há NaT nas chaves de merge antes de deduplicar
+            df_gestao = df_gestao.dropna(subset=merge_keys)
 
-                # 3. Identificar Cancelados (para remoção total do Balanço)
-                mask_canceled = pd.Series(False, index=df_gestao.index)
-                if cancelada_col and cancelada_col in df_gestao.columns:
-                    mask_canceled = df_gestao[cancelada_col].astype(str).str.strip().str.upper().isin(["SIM", "S", "TRUE", "1"])
-                elif cancel_col and cancel_col in df_gestao.columns:
-                    cv = df_gestao[cancel_col].astype(str).str.strip().str.lower()
-                    mask_canceled = df_gestao[cancel_col].notna() & (~cv.isin(["", "-", "nan", "nat", "none"]))
-
-                # Remover faturas canceladas do Balanço Energético AGORA
-                # Isso evita que elas apareçam no Excel e que o Fallback ressuscite elas com datas erradas
-                if mask_canceled.any() and ref_merge_col in df_consolidado.columns:
-                    # Identificar chaves (UC+Período) candidatas a cancelamento
-                    df_canceled_cand = df_gestao[mask_canceled][["No. UC_norm", ref_merge_col]].dropna().drop_duplicates()
-                    # Identificar chaves que possuem pelo menos um registro ATIVO
-                    df_active_keys = df_gestao[~mask_canceled][["No. UC_norm", ref_merge_col]].dropna().drop_duplicates()
-                    
-                    if not df_canceled_cand.empty:
-                        # Criar chaves compostas para comparação
-                        cand_keys = df_canceled_cand["No. UC_norm"] + "_" + df_canceled_cand[ref_merge_col].astype(str)
-                        active_keys = df_active_keys["No. UC_norm"] + "_" + df_active_keys[ref_merge_col].astype(str)
-                        
-                        # Só removemos do Balanço se a chave estiver cancelada E NÃO houver versão ativa
-                        drop_keys = cand_keys[~cand_keys.isin(active_keys)]
-                        
-                        if not drop_keys.empty:
-                            target_keys = df_consolidado["No. UC_norm"] + "_" + df_consolidado[ref_merge_col].astype(str)
-                            antes = len(df_consolidado)
-                            df_consolidado = df_consolidado[~target_keys.isin(drop_keys)].copy()
-                            logger.info("Filtro Canceladas: %d registros removidos da base consolidada.", antes - len(df_consolidado))
-
-                # 4. Limpar df_gestao (remover cancelados) e renomear para o Merge
-                # Remover cancelados da gestão ANTES de deduplicar
-                df_gestao = df_gestao[~mask_canceled].copy()
-                logger.info(
-                    "Gestão após remoção de cancelados: %d registros.", len(df_gestao)
+            # Ordenar por Vencimento decrescente antes de deduplicar
+            # Assim keep="first" preserva sempre o vencimento mais recente
+            # entre duplicatas do mesmo UC + Período
+            if "Vencimento" in df_gestao.columns:
+                df_gestao["_venc_sort"] = pd.to_datetime(
+                    df_gestao["Vencimento"], dayfirst=True, errors="coerce"
                 )
-                
-                rename_dict = {}
-                if venc_col: rename_dict[venc_col] = "Vencimento"
-                if status_col: rename_dict[status_col] = "Status Pos-Faturamento_gestao"
-                
-                # Remover colunas originais que não usaremos mais ou renomearemos
-                cols_to_drop = [uc_col]
-                if ref_col: cols_to_drop.append(ref_col)
-                if cancel_col: cols_to_drop.append(cancel_col)
-                if cancelada_col: cols_to_drop.append(cancelada_col)
-                
-                df_gestao = df_gestao.drop(columns=[c for c in cols_to_drop if c in df_gestao.columns])
-                df_gestao.rename(columns=rename_dict, inplace=True)
+                df_gestao = df_gestao.sort_values("_venc_sort", ascending=False)
+            
+            # Reportar duplicatas ANTES do drop (para transparência)
+            dupes_count = df_gestao.duplicated(subset=merge_keys).sum()
+            if dupes_count > 0:
+                logger.warning("Base de Gestão contém %d faturas duplicadas para a mesma UC+Período. Mantendo apenas a mais recente.", dupes_count)
 
-                # 5. Realizar o Merge (Cruzamento)
-                merge_keys = ["No. UC_norm"]
-                if ref_merge_col in df_gestao.columns and ref_merge_col in df_consolidado.columns:
-                    merge_keys.append(ref_merge_col)
-                
-                # Deduplicar gestão preservando o período
-                df_gestao = df_gestao.dropna(subset=merge_keys)
+            df_gestao = df_gestao.drop_duplicates(subset=merge_keys, keep="first")
+            if "_venc_sort" in df_gestao.columns:
+                df_gestao = df_gestao.drop(columns=["_venc_sort"])
+            
+            logger.info(
+                "Gestão após deduplicação: %d registros únicos por %s.",
+                len(df_gestao), merge_keys
+            )
 
-                # Ordenar por Vencimento decrescente antes de deduplicar
-                # Assim keep="first" preserva sempre o vencimento mais recente
-                # entre duplicatas do mesmo UC + Período
-                if "Vencimento" in df_gestao.columns:
-                    df_gestao["_venc_sort"] = pd.to_datetime(
-                        df_gestao["Vencimento"], dayfirst=True, errors="coerce"
+            logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros Gestão)...", merge_keys, len(df_gestao))
+            _original_len = len(df_consolidado)  # capture antes do merge
+            df_consolidado = pd.merge(df_consolidado, df_gestao, on=merge_keys, how="left")
+
+            # Validação pós-merge
+            n_sem_vencimento = df_consolidado["Vencimento"].isna().sum() if "Vencimento" in df_consolidado.columns else 0
+            n_linhas_extras = len(df_consolidado) - _original_len
+
+            logger.info(
+                "Pós-merge: %d registros | %d sem Vencimento | %d linhas vs original",
+                len(df_consolidado), n_sem_vencimento, n_linhas_extras
+            )
+
+            if n_linhas_extras > 0:
+                pct = n_linhas_extras / max(_original_len, 1) * 100
+                logger.warning(
+                    "Merge produziu %d linhas extras (%.1f%% acima do original). "
+                    "Possível duplicata na base de Gestão.",
+                    n_linhas_extras, pct
+                )
+                if pct > 5.0:
+                    raise ValueError(
+                        f"Merge abortado: {n_linhas_extras} linhas extras "
+                        f"({pct:.1f}% acima do original de {_original_len}). "
+                        "Verifique duplicatas na base de Gestão por UC + Período."
                     )
-                    df_gestao = df_gestao.sort_values("_venc_sort", ascending=False)
-                    df_gestao = df_gestao.drop(columns=["_venc_sort"])
 
-                df_gestao = df_gestao.drop_duplicates(subset=merge_keys, keep="first")
-                logger.info(
-                    "Gestão após deduplicação: %d registros únicos por UC+Período.",
-                    len(df_gestao)
-                )
+            # 6. Removido Fallback por UC (evitar mistura de referências)
+            # O merge agora é estritamente por UC + Período.
 
-                logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros Gestão)...", merge_keys, len(df_gestao))
-                _original_len = len(df_consolidado)  # capture antes do merge
-                df_consolidado = pd.merge(df_consolidado, df_gestao, on=merge_keys, how="left")
-
-                # Validação pós-merge
-                n_sem_vencimento = df_consolidado["Vencimento"].isna().sum() if "Vencimento" in df_consolidado.columns else 0
-                n_linhas_extras = len(df_consolidado) - _original_len
-
-                logger.info(
-                    "Pós-merge: %d registros | %d sem Vencimento | %d linhas vs original",
-                    len(df_consolidado), n_sem_vencimento, n_linhas_extras
-                )
-
-                if n_linhas_extras > 0:
-                    pct = n_linhas_extras / max(_original_len, 1) * 100
-                    logger.warning(
-                        "Merge produziu %d linhas extras (%.1f%% acima do original). "
-                        "Possível duplicata na base de Gestão.",
-                        n_linhas_extras, pct
-                    )
-                    if pct > 5.0:
-                        raise ValueError(
-                            f"Merge abortado: {n_linhas_extras} linhas extras "
-                            f"({pct:.1f}% acima do original de {_original_len}). "
-                            "Verifique duplicatas na base de Gestão por UC + Período."
-                        )
-
-                # 6. Removido Fallback por UC (evitar mistura de referências)
-                # O merge agora é estritamente por UC + Período.
-
-                # 7. Consolidação final de nomes de colunas
-                if "Status Pos-Faturamento_gestao" in df_consolidado.columns and "Status Pos-Faturamento" in df_consolidado.columns:
-                    df_consolidado["Status Pos-Faturamento"] = df_consolidado["Status Pos-Faturamento_gestao"].combine_first(df_consolidado["Status Pos-Faturamento"])
-                    df_consolidado.drop(columns=["Status Pos-Faturamento_gestao"], inplace=True)
-                elif "Status Pos-Faturamento_gestao" in df_consolidado.columns:
-                    df_consolidado.rename(columns={"Status Pos-Faturamento_gestao": "Status Pos-Faturamento"}, inplace=True)
-                    
-                # Limpar colunas auxiliares de merge (mantendo No. UC_norm para o relatório se necessário)
+            # 7. Consolidação final de nomes de colunas
+            if "Status Pos-Faturamento_gestao" in df_consolidado.columns and "Status Pos-Faturamento" in df_consolidado.columns:
+                df_consolidado["Status Pos-Faturamento"] = df_consolidado["Status Pos-Faturamento_gestao"].combine_first(df_consolidado["Status Pos-Faturamento"])
+                df_consolidado.drop(columns=["Status Pos-Faturamento_gestao"], inplace=True)
+            elif "Status Pos-Faturamento_gestao" in df_consolidado.columns:
+                df_consolidado.rename(columns={"Status Pos-Faturamento_gestao": "Status Pos-Faturamento"}, inplace=True)
                 
-                # 8. Detecção de Pendências
-                mask_missing = df_consolidado["Vencimento"].isna()
-                if mask_missing.any():
-                    missing_df = df_consolidado[mask_missing].copy()
-                    pendencias = []
+            # Limpar colunas auxiliares de merge (mantendo No. UC_norm para o relatório se necessário)
+            
+            # 8. Detecção de Pendências
+            mask_missing = df_consolidado["Vencimento"].isna()
+            if mask_missing.any():
+                missing_df = df_consolidado[mask_missing].copy()
+                pendencias = []
+                
+                for _, row in missing_df.iterrows():
+                    uc_norm = row["No. UC_norm"]
+                    tipo = "UC_AUSENTE_NA_GESTAO" if uc_norm not in all_gestao_ucs else "PERIODO_NAO_LANCADO"
                     
-                    for _, row in missing_df.iterrows():
-                        uc_norm = row["No. UC_norm"]
-                        tipo = "UC_AUSENTE_NA_GESTAO" if uc_norm not in all_gestao_ucs else "PERIODO_NAO_LANCADO"
-                        
-                        pendencias.append({
-                            "no_uc": str(row["No. UC"]),
-                            "referencia": str(row["Referencia"]),
-                            "razao_social": str(row["Razao Social"]),
-                            "cpf_cnpj": str(row["CPF/CNPJ"]),
-                            "tipo": tipo
-                        })
-                    
-                    report = {
-                        "gerado_em": datetime.now().isoformat(),
-                        "total_ucs_sem_vencimento": len(pendencias),
-                        "pendencias": pendencias
-                    }
-                    
-                    try:
-                        with open(PENDENCIAS_FILE, "w", encoding="utf-8") as f:
-                            json.dump(report, f, indent=2, ensure_ascii=False)
-                        logger.info("Relatório de pendências salvo com %d itens.", len(pendencias))
-                    except Exception as e:
-                        logger.warning("Erro ao salvar pendencias.json: %s", e)
-                else:
-                    report = {
-                        "gerado_em": datetime.now().isoformat(),
-                        "total_ucs_sem_vencimento": 0,
-                        "pendencias": []
-                    }
-                    try:
-                        with open(PENDENCIAS_FILE, "w", encoding="utf-8") as f:
-                            json.dump(report, f, indent=2, ensure_ascii=False)
-                    except: pass
-
-                drop_aux = ["No. UC_norm", "Referencia_merge"]
-                df_consolidado.drop(columns=[c for c in drop_aux if c in df_consolidado.columns], inplace=True)
+                    pendencias.append({
+                        "no_uc": str(row["No. UC"]),
+                        "referencia": str(row["Referencia"]),
+                        "razao_social": str(row["Razao Social"]),
+                        "cpf_cnpj": str(row["CPF/CNPJ"]),
+                        "tipo": tipo
+                    })
+                
+                report = {
+                    "gerado_em": datetime.now().isoformat(),
+                    "total_ucs_sem_vencimento": len(pendencias),
+                    "pendencias": pendencias
+                }
+                
+                try:
+                    with open(PENDENCIAS_FILE, "w", encoding="utf-8") as f:
+                        json.dump(report, f, indent=2, ensure_ascii=False)
+                    logger.info("Relatório de pendências salvo com %d itens.", len(pendencias))
+                except Exception as e:
+                    logger.warning("Erro ao salvar pendencias.json: %s", e)
             else:
-                logger.warning("Colunas chaves não encontradas na Gestão: UC=%s, Vencimento=%s", uc_col, venc_col)
+                report = {
+                    "gerado_em": datetime.now().isoformat(),
+                    "total_ucs_sem_vencimento": 0,
+                    "pendencias": []
+                }
+                try:
+                    with open(PENDENCIAS_FILE, "w", encoding="utf-8") as f:
+                        json.dump(report, f, indent=2, ensure_ascii=False)
+                except: pass
+
+            drop_aux = ["No. UC_norm", "Referencia_merge"]
+            df_consolidado.drop(columns=[c for c in drop_aux if c in df_consolidado.columns], inplace=True)
         except ValueError as e:
             # Re-raise erros de validação propositais
             logger.error(str(e))

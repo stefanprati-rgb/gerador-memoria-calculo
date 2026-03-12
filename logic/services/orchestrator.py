@@ -12,6 +12,7 @@ from logic.core.mapping import (
     SUM_COLUMNS,
     PARENT_ROW_FLAG,
     CLIENT_COLUMN,
+    GRUPO_1_MAPPING,
 )
 import pandas as pd
 from typing import Any, List, Optional, Dict
@@ -167,15 +168,48 @@ class Orchestrator:
             logger.warning("Nenhum dado restante após filtro de completude.")
             return None
 
-        # Aplicar lógica de agrupamento
-        processed_df = self._apply_grouping(filtered_df)
+        # DETECÇÃO E ROTEAMENTO GRUPO 1
+        # Se for Grupo 1 (A3/A4 - Alta Tensão), usamos agregação por CPF/CNPJ e mapping específico.
+        # Por enquanto identificamos pelo cliente DELCI, mas pode ser expandido.
+        is_group_1 = any("DELCI" in str(c).upper() for c in selected_clients)
+        
+        if is_group_1:
+            logger.info("Detectado 'Grupo 1'. Aplicando agregação por No. UC e Layout Consolidado.")
+            
+            # Preparar fallbacks: se o campo da Gestão não existir ou for nulo, use o do Balanço
+            # Isso é feito LINHA A LINHA antes do GroupBy para que o sum funcione corretamente.
+            temp_df = filtered_df.copy()
+            
+            if "Valor_gestao" not in temp_df.columns: temp_df["Valor_gestao"] = temp_df["Custo c/ GD"]
+            else: temp_df["Valor_gestao"] = temp_df["Valor_gestao"].fillna(temp_df["Custo c/ GD"])
+            
+            if "Base_gestao" not in temp_df.columns: temp_df["Base_gestao"] = temp_df["Custo s/ GD"]
+            else: temp_df["Base_gestao"] = temp_df["Base_gestao"].fillna(temp_df["Custo s/ GD"])
+
+            # 1. Agrupar por No. UC e Referencia (Instalação Física)
+            agg_df = temp_df.groupby(["No. UC", "Referencia"], as_index=False).agg({
+                "Razao Social": "first",
+                "Vencimento": "first",
+                "Valor_gestao": "sum",
+                "Base_gestao": "sum",
+                "Boleto Raizen": "sum",
+                "Status Pos-Faturamento": lambda x: ", ".join(sorted(set(str(v).strip() for v in x if pd.notna(v) and str(v).strip()))),
+            })
+            
+            # Formatar o Status caso fique vazio
+            agg_df["Status Pos-Faturamento"] = agg_df["Status Pos-Faturamento"].replace("", "Em aberto")
+            
+            processed_df = agg_df
+            full_mapping = GRUPO_1_MAPPING
+        else:
+            # Fluxo Legado (Individual/Agrupamento Raizen)
+            processed_df = self._apply_grouping(filtered_df)
+            full_mapping = dict(COLUMN_MAPPING)
+            for col, dest in ENRICHMENT_MAPPING.items():
+                if col in processed_df.columns:
+                    full_mapping[col] = dest
 
         writer = TemplateExcelWriter(self.template_file)
-        # Mesclar mapeamento obrigatório + colunas de enriquecimento que existirem no DF
-        full_mapping = dict(COLUMN_MAPPING)
-        for col, dest in ENRICHMENT_MAPPING.items():
-            if col in processed_df.columns:
-                full_mapping[col] = dest
         excel_bytes = writer.generate_bytes(processed_df, full_mapping)
 
         logger.info("Planilha gerada com sucesso (%d bytes).", len(excel_bytes))
