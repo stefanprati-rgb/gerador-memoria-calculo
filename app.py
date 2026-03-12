@@ -10,7 +10,7 @@ from logic.services.sync_service import PARQUET_FILE, get_cache_update_time
 from ui.styles import inject_styles
 from ui.header import render_header
 from ui.sidebar import render_sidebar_metrics
-from ui.groups_ui import render_groups_section, render_generation_button
+from ui.groups_wizard_ui import render_groups_section_wizard
 from ui.admin import render_admin_panel
 
 # Inicializar logging
@@ -75,8 +75,7 @@ if base_file and template_file:
         available_clients = orch.get_available_clients()
 
         render_sidebar_metrics(available_clients, available_periods, len(orch.reader.df))
-        render_groups_section(available_clients, available_periods, orch)
-        render_generation_button(orch)
+        render_groups_section_wizard(available_clients, available_periods, orch)
 
     except HeaderNotFoundError as e:
         st.error(f"🔍 Não foi possível detectar o cabeçalho na planilha: {e}")

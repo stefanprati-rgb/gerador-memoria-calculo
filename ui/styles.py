@@ -17,11 +17,11 @@ CUSTOM_CSS = """
     /* Cabeçalho principal estilizado */
     .main-header {
         background: linear-gradient(135deg, #0f4c75 0%, #1b7fa3 50%, #00b4d8 100%);
-        padding: 1.8rem 2rem;
-        border-radius: 12px;
-        margin-bottom: 1.5rem;
+        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        margin-bottom: 0.8rem;
         color: white;
-        box-shadow: 0 4px 20px rgba(15, 76, 117, 0.25);
+        box-shadow: 0 4px 15px rgba(15, 76, 117, 0.2);
     }
     .main-header h1 {
         margin: 0;

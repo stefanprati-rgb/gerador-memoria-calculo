@@ -132,16 +132,39 @@ class Orchestrator:
         logger.info("Agrupamento: %d faturas pai geradas. Total de linhas agora: %d.", parent_count, len(df))
         return df
 
-    def generate(self, selected_clients: List[str], selected_periods: List[str]) -> Optional[bytes]:
+    def _incomplete_mask(self, df: pd.DataFrame) -> pd.Series:
+        """Retorna máscara booleana: True para linhas com Vencimento ausente."""
+        if "Vencimento" not in df.columns:
+            return pd.Series(False, index=df.index)
+        return df["Vencimento"].isna() | (df["Vencimento"].astype(str).str.strip().str.lower().isin(["", "nan", "nat", "none"]))
+
+    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all") -> Optional[bytes]:
         """
         Filtra a base, aplica agrupamento e gera o arquivo Excel com os dados mapeados.
+        
+        Args:
+            incomplete_filter: 'all' (tudo), 'complete_only' (sem incompletos), 'incomplete_only' (só incompletos).
         """
-        logger.info("Gerando planilha para %d clientes, %d períodos.", len(selected_clients), len(selected_periods))
+        logger.info("Gerando planilha para %d clientes, %d períodos. Filtro: %s", len(selected_clients), len(selected_periods), incomplete_filter)
 
         filtered_df = self.reader.filter_data(selected_clients, selected_periods)
 
         if filtered_df.empty:
             logger.warning("Nenhum dado encontrado após aplicar os filtros.")
+            return None
+
+        # Filtrar por completude se solicitado
+        if incomplete_filter == "complete_only":
+            mask = self._incomplete_mask(filtered_df)
+            filtered_df = filtered_df[~mask]
+            logger.info("Filtro 'complete_only': %d linhas removidas por incompletude.", mask.sum())
+        elif incomplete_filter == "incomplete_only":
+            mask = self._incomplete_mask(filtered_df)
+            filtered_df = filtered_df[mask]
+            logger.info("Filtro 'incomplete_only': %d linhas incompletas mantidas.", mask.sum())
+
+        if filtered_df.empty:
+            logger.warning("Nenhum dado restante após filtro de completude.")
             return None
 
         # Aplicar lógica de agrupamento
@@ -158,7 +181,7 @@ class Orchestrator:
         logger.info("Planilha gerada com sucesso (%d bytes).", len(excel_bytes))
         return excel_bytes
 
-    def generate_multiple(self, groups: List[Dict[str, Any]]) -> Optional[bytes]:
+    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all") -> Optional[bytes]:
         """
         Recebe uma lista de dicionários com chaves 'name', 'clients' (List[str]), e 'periods' (List[str]).
         Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados.
@@ -167,7 +190,7 @@ class Orchestrator:
         import zipfile
         import io
 
-        logger.info("Gerando lote com %d grupos.", len(groups))
+        logger.info("Gerando lote com %d grupos. Filtro: %s", len(groups), incomplete_filter)
 
         zip_buffer = io.BytesIO()
         generated_count = 0
@@ -182,7 +205,7 @@ class Orchestrator:
                     logger.warning("Grupo '%s' ignorado: sem clientes ou períodos.", group_name)
                     continue
 
-                excel_bytes = self.generate(clients, periods)
+                excel_bytes = self.generate(clients, periods, incomplete_filter=incomplete_filter)
                 if excel_bytes:
                     filename = group_name if group_name.endswith(".xlsx") else f"{group_name}.xlsx"
                     zip_file.writestr(filename, excel_bytes)
