@@ -20,6 +20,11 @@ GROUPING_FLAG_VALUE = "Agrupamento"
 # Colunas usadas como chave de agrupamento (CPF/CNPJ × Distribuidora)
 GROUPING_KEYS = ["CPF/CNPJ", "Distribuidora"]
 
+# Colunas de Hierarquia (Balanço Energético)
+HIERARCHY_KEY_COL = "UC p Rateio"
+HIERARCHY_PARENT_COL = "Main"
+HIERARCHY_PARENT_VALUE = "Y"
+
 # Colunas financeiras que devem ser SOMADAS na linha "Fatura Pai"
 SUM_COLUMNS = [
     "Cred. Consumido Raizen",
@@ -80,4 +85,7 @@ def get_required_columns() -> list[str]:
     cols = set(COLUMN_MAPPING.keys())
     cols.add(GROUPING_FLAG_COL)
     cols.update(GROUPING_KEYS)
+    # Incluir colunas de hierarquia para o agrupamento correto
+    cols.add(HIERARCHY_KEY_COL)
+    cols.add(HIERARCHY_PARENT_COL)
     return list(cols)
