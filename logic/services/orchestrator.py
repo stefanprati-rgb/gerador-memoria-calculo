@@ -238,8 +238,17 @@ class Orchestrator:
         else:
             # Fluxo Legado (Individual/Agrupamento Raizen)
             processed_df = self._apply_grouping(filtered_df)
-            # Como todas as colunas (incluindo Vencimento) agora estão no COLUMN_MAPPING
-            # seguindo a ordem desejada, basta usá-lo como base.
+            
+            # 1. Garantir que todas as colunas do mapping existam (defensivo)
+            legacy_keys = list(COLUMN_MAPPING.keys())
+            for col in legacy_keys:
+                if col not in processed_df.columns:
+                    processed_df[col] = pd.NA
+            
+            # 2. Filtrar e Reordenar estritamente para as 14 colunas + flag interna
+            processed_df = processed_df.reindex(columns=legacy_keys + [PARENT_ROW_FLAG])
+            
+            # 3. O Mapping deve ser uma cópia limpa do COLUMN_MAPPING para garantir ordem
             full_mapping = dict(COLUMN_MAPPING)
 
         writer = TemplateExcelWriter(self.template_file)
