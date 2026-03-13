@@ -20,6 +20,9 @@ GROUPING_FLAG_VALUE = "Agrupamento"
 # Colunas usadas como chave de agrupamento (CPF/CNPJ × Distribuidora)
 GROUPING_KEYS = ["CPF/CNPJ", "Distribuidora"]
 
+# Coluna comercial usada pela Raízen para agrupar faturas de grandes clientes (ex: DELCI)
+GROUPING_IBM_COL = "No. IBM"
+
 # Colunas de Hierarquia (Balanço Energético)
 HIERARCHY_KEY_COL = "UC p Rateio"
 HIERARCHY_PARENT_COL = "Main"
@@ -88,4 +91,6 @@ def get_required_columns() -> list[str]:
     # Incluir colunas de hierarquia (Balanço Energético) para o agrupamento correto
     cols.add(HIERARCHY_KEY_COL)
     cols.add(HIERARCHY_PARENT_COL)
+    # Incluir coluna comercial IBM
+    cols.add(GROUPING_IBM_COL)
     return list(cols)
