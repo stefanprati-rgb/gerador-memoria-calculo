@@ -51,7 +51,12 @@ class Orchestrator:
             return {"total_registros": 0, "registros_incompletos": 0, "ucs_afetadas": []}
             
         # Vencimento é a coluna chave para identificar falta de match com a gestão
-        mask_incomplete = df["Vencimento"].isna() | (df["Vencimento"].astype(str).str.strip().str.lower().isin(["", "nan", "nat", "none"]))
+        if "Vencimento" not in df.columns:
+            # Se não houve enriquecimento da gestão, assumimos que não há o que marcar como incompleto
+            # (ou tratamos como tudo potencialmente incompleto, mas 0 é mais seguro para a UI)
+            return {"total_registros": len(df), "registros_incompletos": 0, "ucs_afetadas": []}
+            
+        mask_incomplete = self._incomplete_mask(df)
         incomplete_df = df[mask_incomplete]
         
         ucs_afetadas = []
