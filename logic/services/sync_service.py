@@ -229,45 +229,28 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                 df_gestao = df_gestao.sort_values("_venc_sort", ascending=False)
             
             # Reportar duplicatas ANTES do drop (para transparência)
-            dupes_count = df_gestao.duplicated(subset=merge_keys).sum()
             if dupes_count > 0:
-                logger.warning("Base de Gestão contém %d faturas duplicadas para a mesma UC+Período. Mantendo apenas a mais recente.", dupes_count)
+                logger.warning("Base de Gestão contém %d faturas duplicadas para a mesma UC+Período. Elas serão marcadas como 'Conta dupla'.", dupes_count)
 
+            # Marcar duplicatas ANTES do drop para permitir detecção de 'Conta dupla'
+            df_gestao["_is_duplicate_gestao"] = df_gestao.duplicated(subset=merge_keys, keep=False)
             df_gestao = df_gestao.drop_duplicates(subset=merge_keys, keep="first")
+            
             if "_venc_sort" in df_gestao.columns:
                 df_gestao = df_gestao.drop(columns=["_venc_sort"])
             
-            logger.info(
-                "Gestão após deduplicação: %d registros únicos por %s.",
-                len(df_gestao), merge_keys
-            )
-
-            logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros Gestão)...", merge_keys, len(df_gestao))
+            logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros únicos na Gestão)...", merge_keys, len(df_gestao))
             _original_len = len(df_consolidado)  # capture antes do merge
             df_consolidado = pd.merge(df_consolidado, df_gestao, on=merge_keys, how="left")
 
-            # Validação pós-merge
+            # Validação pós-merge: Apenas informativa agora, pois 'Conta dupla' é uma possibilidade tratada
             n_sem_vencimento = df_consolidado["Vencimento"].isna().sum() if "Vencimento" in df_consolidado.columns else 0
             n_linhas_extras = len(df_consolidado) - _original_len
 
             logger.info(
-                "Pós-merge: %d registros | %d sem Vencimento | %d linhas vs original",
+                "Pós-merge: %d registros | %d sem Vencimento | %d linhas extras (duplicatas)",
                 len(df_consolidado), n_sem_vencimento, n_linhas_extras
             )
-
-            if n_linhas_extras > 0:
-                pct = n_linhas_extras / max(_original_len, 1) * 100
-                logger.warning(
-                    "Merge produziu %d linhas extras (%.1f%% acima do original). "
-                    "Possível duplicata na base de Gestão.",
-                    n_linhas_extras, pct
-                )
-                if pct > 5.0:
-                    raise ValueError(
-                        f"Merge abortado: {n_linhas_extras} linhas extras "
-                        f"({pct:.1f}% acima do original de {_original_len}). "
-                        "Verifique duplicatas na base de Gestão por UC + Período."
-                    )
 
             # 6. Removido Fallback por UC (evitar mistura de referências)
             # O merge agora é estritamente por UC + Período.

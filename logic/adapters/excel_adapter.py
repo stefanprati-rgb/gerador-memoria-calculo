@@ -276,58 +276,33 @@ class TemplateExcelWriter:
         wb = openpyxl.load_workbook(self.template_source)
         ws = wb.active
 
-        # 1. Mapear cabeçalhos físicos do template para as colunas da fonte
-        # Queremos saber: "Em qual coluna física (idx) eu coloco o dado X?"
+        # 1. Mapear e Enforcar Layout (Strict layout)
+        # Para evitar o "monstro de 16 colunas", vamos limpar a linha de cabeçalho
+        # e reconstruir exatamente na ordem do mapping.
         header_row_idx = 1
-        template_col_to_idx = {} # {logical_source_name: column_index}
         
-        # Mapa reverso do Mapping: {template_target_name: logical_source_name}
-        # Ex: {"Instalação": "CPF/CNPJ"}
-        target_to_source = {v.strip(): k for k, v in column_mapping.items()}
+        # Guardar max_column original para limpeza posterior
+        original_max_col = ws.max_column
         
-        # Normalização para busca
-        norm_legacy = {k.strip().lower(): v for k, v in self.LEGACY_HEADER_MAP.items()}
-        norm_source = {k.strip().lower(): k for k in column_mapping.keys()}
+        # Limpar todos os valores na linha de cabeçalho para evitar resíduos
+        for c in range(1, original_max_col + 1):
+            ws.cell(row=header_row_idx, column=c).value = None
 
-        for idx, cell in enumerate(ws[header_row_idx], 1):
-            if not cell.value: continue
+        template_col_to_idx = {}
+        for idx, (logical_name, target_label) in enumerate(column_mapping.items(), 1):
+            # Normalizar label caso venha com espaços
+            target_label = target_label.strip()
+            # Escrever novo header
+            ws.cell(row=header_row_idx, column=idx, value=target_label)
+            # Mapear nome lógico da fonte para este índice físico
+            template_col_to_idx[logical_name] = idx
             
-            orig_val = str(cell.value).strip()
-            search_key = orig_val.lower()
-            
-            # Tentar encontrar qual coluna lógica da fonte este cabeçalho representa
-            logical_source = None
-            
-            if search_key in norm_source: # Nome exato (ex: "CPF/CNPJ")
-                logical_source = norm_source[search_key]
-            elif search_key in norm_legacy: # Nome legado (ex: "CNPJ" -> "CPF/CNPJ")
-                logical_source = norm_legacy[search_key]
-            elif search_key in {k.lower(): v for k, v in target_to_source.items()}: # Já é o nome de destino (ex: "Instalação")
-                logical_source = {k.lower(): v for k, v in target_to_source.items()}[search_key]
+        # Deletar colunas impiedosamente que não estão no mapping
+        if original_max_col > len(column_mapping):
+            ws.delete_cols(len(column_mapping) + 1, original_max_col - len(column_mapping))
 
-            if logical_source:
-                template_col_to_idx[logical_source] = idx
-                # RENOMEAR CABEÇALHO PARA O DESTINO DO MAPPING
-                new_label = column_mapping[logical_source]
-                cell.value = new_label
-        
-        # Se houver colunas no mapping que NÃO estão no template (ex: Vencimento ou novas colunas do Grupo 1)
-        # Adicionamos ao final
-        next_free_col = 1
-        for idx, cell in enumerate(ws[header_row_idx], 1):
-            if cell.value: next_free_col = idx + 1
-
-        for src_col, target_label in column_mapping.items():
-            if src_col not in template_col_to_idx:
-                # Adiciona nova coluna no final
-                new_cell = ws.cell(row=header_row_idx, column=next_free_col, value=target_label)
-                template_col_to_idx[src_col] = next_free_col
-                next_free_col += 1
-
-        # Determinar a próxima linha vazia para inserir dados
-        start_row = ws.max_row + 1
-        if start_row <= 2 and ws.cell(row=2, column=1).value is None:
-            start_row = 2
+        # Sempre começar a escrever dados na linha 2, limpando qualquer resíduo do template
+        start_row = 2
         
         current_row = start_row
 
