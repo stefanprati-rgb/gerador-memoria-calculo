@@ -12,6 +12,7 @@ from logic.core.mapping import (
     HIERARCHY_KEY_COL,
     HIERARCHY_PARENT_COL,
     HIERARCHY_PARENT_VALUE,
+    GROUPING_IBM_COL,
     PARENT_ROW_FLAG,
     CLIENT_COLUMN,
 )
@@ -101,25 +102,30 @@ class Orchestrator:
         # O UC p Rateio é a chave definitiva que diz quais UCs moram juntas numa fatura.
         keys = ["Referencia", CLIENT_COLUMN]
         
-        # Sanitização rigorosa de tipos para chaves de identificação (UCs)
+        # Sanitização rigorosa de tipos para chaves de identificação (UCs e IBM)
         # Excel costuma carregar números como float (1.0), o que quebra o de-para com strings ("1")
-        for col in ["No. UC", HIERARCHY_KEY_COL]:
+        for col in ["No. UC", HIERARCHY_KEY_COL, GROUPING_IBM_COL]:
             if col in df.columns:
                 df[col] = (
                     df[col]
                     .astype(str)
                     .str.replace(r"\.0$", "", regex=True)
                     .str.strip()
-                    .replace("nan", pd.NA)  # Voltar pd.NA real após converter para str
+                    .replace(["nan", "None", ""], pd.NA)  # Voltar pd.NA real após converter para str
                 )
 
-        # Se tivermos a coluna de hierarquia, ela é nossa chave principal de grupo
-        if HIERARCHY_KEY_COL in df.columns:
-            # Preencher com No. UC se estiver vazio (indica que a UC é sua própria raiz)
+        # Determinar a chave de agrupamento principal (Prioridade: IBM -> Hierarchy -> Keys)
+        if GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
+            # Grande cliente Raízen: usar IBM como chave de agrupamento
+            # Preencher com No. UC apenas se IBM for nulo para garantir que não dropamos nada
+            df["group_key"] = df[GROUPING_IBM_COL].fillna(df[HIERARCHY_KEY_COL].fillna(df["No. UC"]))
+            keys.append("group_key")
+        elif HIERARCHY_KEY_COL in df.columns:
+            # Cliente com hierarquia tradicional
             df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df["No. UC"])
             keys.append(HIERARCHY_KEY_COL)
         else:
-            # Fallback para o comportamento antigo se a coluna não existir
+            # Fallback para o comportamento antigo se nada de hierarquia existir
             if "CPF/CNPJ" in df.columns: keys.append("CPF/CNPJ")
             if "Distribuidora" in df.columns: keys.append("Distribuidora")
         
