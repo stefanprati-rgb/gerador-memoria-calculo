@@ -174,19 +174,18 @@ class Orchestrator:
         is_group_1 = any("DELCI" in str(c).upper() for c in selected_clients)
         
         if is_group_1:
-            logger.info("Detectado 'Grupo 1'. Aplicando agregação por No. UC e Layout Consolidado.")
-            
-            # Preparar fallbacks: se o campo da Gestão não existir ou for nulo, use o do Balanço
-            # Isso é feito LINHA A LINHA antes do GroupBy para que o sum funcione corretamente.
+            # Preparar dataframe temporário para agregação
             temp_df = filtered_df.copy()
-            
+
+            # Garantir colunas obrigatórias vindas da Gestão ou do Balanço
+            # Fallbacks: Valor e Base vêm do Custo se não existirem na Gestão
             if "Valor_gestao" not in temp_df.columns: temp_df["Valor_gestao"] = temp_df["Custo c/ GD"]
             else: temp_df["Valor_gestao"] = temp_df["Valor_gestao"].fillna(temp_df["Custo c/ GD"])
             
             if "Base_gestao" not in temp_df.columns: temp_df["Base_gestao"] = temp_df["Custo s/ GD"]
             else: temp_df["Base_gestao"] = temp_df["Base_gestao"].fillna(temp_df["Custo s/ GD"])
 
-            # Garantir colunas obrigatórias para o mapping final
+            # Outras colunas obrigatórias para o mapping final
             for col in ["Vencimento", "Status Pos-Faturamento", "_is_duplicate_gestao"]:
                 if col not in temp_df.columns:
                     temp_df[col] = False if col == "_is_duplicate_gestao" else pd.NA
@@ -196,15 +195,12 @@ class Orchestrator:
             # Para detectar Sem fatura, olhamos se o Vencimento (vinculado à Gestão) é nulo.
             
             def format_status_agg(idx):
-                # idx são os índices do grupo no temp_df
                 group_rows = temp_df.loc[idx]
-                
                 statuses = set(str(v).strip() for v in group_rows["Status Pos-Faturamento"] if pd.notna(v) and str(v).strip())
                 
                 res = list(statuses)
                 if not res: res = ["Em Aberto"]
                 
-                # Houve duplicata na GESTÃO para este UC+Período?
                 if group_rows["_is_duplicate_gestao"].any():
                     res.append("Conta dupla")
                 
@@ -213,7 +209,7 @@ class Orchestrator:
             agg_df = temp_df.groupby(["No. UC", "Referencia"], as_index=False).agg({
                 "Razao Social": "first",
                 "Vencimento": "first",
-                "Valor_gestao": "first",  # Mudado de sum para first para evitar inflação por merge expansion
+                "Valor_gestao": "first",
                 "Base_gestao": "first",
                 "Boleto Raizen": "first",
                 "Status Pos-Faturamento": lambda x: format_status_agg(x.index),
@@ -224,9 +220,16 @@ class Orchestrator:
             agg_df.loc[mask_sem_fatura, "Status Pos-Faturamento"] = \
                 agg_df.loc[mask_sem_fatura, "Status Pos-Faturamento"].apply(lambda s: s + "\nSem fatura")
 
-            # 2. Re-selecionar e Reordenar colunas conforme o mapping (Enforce strictly 8 columns)
-            processed_df = agg_df[list(GRUPO_1_MAPPING.keys())]
-            full_mapping = GRUPO_1_MAPPING
+            # 2. Rename e Enforce strictly 8 columns
+            # Primeiro renomeamos para os nomes finais exigidos pelo usuário no mapping
+            agg_df.rename(columns=GRUPO_1_MAPPING, inplace=True)
+            
+            # Agora filtramos estritamente pelas etiquetas de destino (os valores do mapping)
+            final_columns = list(GRUPO_1_MAPPING.values())
+            processed_df = agg_df.reindex(columns=final_columns)
+            
+            # Como já renomeamos, passamos um mapping identidade (para o ExcelWriter não tentar renomear de novo)
+            full_mapping = {c: c for c in final_columns}
         else:
             # Fluxo Legado (Individual/Agrupamento Raizen)
             processed_df = self._apply_grouping(filtered_df)
