@@ -9,6 +9,9 @@ from logic.core.mapping import (
     GROUPING_FLAG_VALUE,
     GROUPING_KEYS,
     SUM_COLUMNS,
+    HIERARCHY_KEY_COL,
+    HIERARCHY_PARENT_COL,
+    HIERARCHY_PARENT_VALUE,
     PARENT_ROW_FLAG,
     CLIENT_COLUMN,
 )
@@ -94,10 +97,19 @@ class Orchestrator:
         grouped_dfs = []
         parent_count = 0
         
-        # Agrupar por Cliente, Período e Distribuidora
-        keys = [CLIENT_COLUMN, "Referencia"]
-        if "CPF/CNPJ" in df.columns: keys.append("CPF/CNPJ")
-        if "Distribuidora" in df.columns: keys.append("Distribuidora")
+        # Agrupar por Cliente, Período e Hierarquia (UC p Rateio)
+        # O UC p Rateio é a chave definitiva que diz quais UCs moram juntas numa fatura.
+        keys = ["Referencia", CLIENT_COLUMN]
+        
+        # Se tivermos a coluna de hierarquia, ela é nossa chave principal de grupo
+        if HIERARCHY_KEY_COL in df.columns:
+            # Preencher N/A para não perder registros no groupby
+            df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df["No. UC"])
+            keys.append(HIERARCHY_KEY_COL)
+        else:
+            # Fallback para o comportamento antigo se a coluna não existir
+            if "CPF/CNPJ" in df.columns: keys.append("CPF/CNPJ")
+            if "Distribuidora" in df.columns: keys.append("Distribuidora")
         
         # Preencher NA nas chaves temporariamente para o groupby não dropar
         for k in keys:
@@ -106,11 +118,17 @@ class Orchestrator:
 
         for group_keys, group_df in df.groupby(keys, sort=False):
             # Verificar se ESSE GRUPO MERECE uma Fatura Pai:
-            # - Tem alguma UC com "Agrupamento"?
-            # - Tem mais de uma UC no grupo? (grupos de 1 não são agrupamentos reais)
-            mask_parent = group_df[GROUPING_FLAG_COL].astype(str).str.strip() == GROUPING_FLAG_VALUE
+            # - Tem alguma UC com Excecao Fat. = "Agrupamento"?
+            # - OU tem alguma UC que é explicitamente Main?
+            # - Tem mais de uma UC no grupo?
+            mask_agrup = group_df[GROUPING_FLAG_COL].astype(str).str.strip() == GROUPING_FLAG_VALUE
+            mask_main = pd.Series(False, index=group_df.index)
+            if HIERARCHY_PARENT_COL in group_df.columns:
+                mask_main = group_df[HIERARCHY_PARENT_COL].astype(str).str.strip().str.upper() == HIERARCHY_PARENT_VALUE
             
-            if mask_parent.any() and len(group_df) > 1:
+            is_group = (mask_agrup.any() or mask_main.any()) and len(group_df) > 1
+            
+            if is_group:
                 # CRIAR A FATURA PAI
                 parent_row = group_df.iloc[0].copy()
                 
