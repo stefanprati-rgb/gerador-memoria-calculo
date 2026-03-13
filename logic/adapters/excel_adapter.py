@@ -299,7 +299,8 @@ class TemplateExcelWriter:
             
         # Deletar colunas impiedosamente que não estão no mapping
         if original_max_col > len(column_mapping):
-            ws.delete_cols(len(column_mapping) + 1, original_max_col - len(column_mapping))
+            # Deletamos desde a coluna N+1 até o máximo encontrado no template original + margem de segurança
+            ws.delete_cols(len(column_mapping) + 1, original_max_col)
 
         # Sempre começar a escrever dados na linha 2, limpando qualquer resíduo do template
         start_row = 2

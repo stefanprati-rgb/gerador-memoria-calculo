@@ -248,8 +248,11 @@ class Orchestrator:
             # 2. Filtrar e Reordenar estritamente para as 14 colunas + flag interna
             processed_df = processed_df.reindex(columns=legacy_keys + [PARENT_ROW_FLAG])
             
-            # 3. O Mapping deve ser uma cópia limpa do COLUMN_MAPPING para garantir ordem
-            full_mapping = dict(COLUMN_MAPPING)
+            # 3. O Mapping deve seguir EXATAMENTE a ordem de chaves do COLUMN_MAPPING
+            from collections import OrderedDict
+            full_mapping = OrderedDict()
+            for k in legacy_keys:
+                full_mapping[k] = COLUMN_MAPPING[k]
 
         writer = TemplateExcelWriter(self.template_file)
         excel_bytes = writer.generate_bytes(processed_df, full_mapping)
