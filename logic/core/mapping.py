@@ -43,6 +43,7 @@ COLUMN_MAPPING = {
     "Distribuidora": "Distribuidora",
     "Cred. Consumido Raizen": "Cred. Consumido Raizen",
     "Desconto Contratado": "Desconto Contratado",
+    "Vencimento": "Vencimento",
     "Status Pos-Faturamento": "Status Pos-Faturamento",
     "Boleto Raizen": "Boleto Raizen",
     "Tarifa Raizen": "Tarifa Raizen",
@@ -76,6 +77,7 @@ CLIENT_COLUMN = "Razao Social"
 # Colunas que existem no mapping, mas cuja ausência na base original não impede o processamento
 OPTIONAL_BASE_COLUMNS = [
     "Status Pos-Faturamento",
+    "Vencimento",
 ]
 
 # Coluna usada para identificar períodos na interface

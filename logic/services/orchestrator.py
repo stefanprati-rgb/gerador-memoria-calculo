@@ -238,10 +238,9 @@ class Orchestrator:
         else:
             # Fluxo Legado (Individual/Agrupamento Raizen)
             processed_df = self._apply_grouping(filtered_df)
+            # Como todas as colunas (incluindo Vencimento) agora estão no COLUMN_MAPPING
+            # seguindo a ordem desejada, basta usá-lo como base.
             full_mapping = dict(COLUMN_MAPPING)
-            for col, dest in ENRICHMENT_MAPPING.items():
-                if col in processed_df.columns:
-                    full_mapping[col] = dest
 
         writer = TemplateExcelWriter(self.template_file)
         excel_bytes = writer.generate_bytes(processed_df, full_mapping)
