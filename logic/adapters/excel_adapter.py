@@ -359,17 +359,20 @@ class TemplateExcelWriter:
                         if ref_cell.has_style:
                             new_cell.font = copy(ref_cell.font)
                             new_cell.border = copy(ref_cell.border)
-                            new_cell.fill = copy(ref_cell.fill)
+                            # Removida a cópia do preenchimento (fill) para evitar propagação de cores
                             if base_col not in self.CURRENCY_COLUMNS:
                                 new_cell.number_format = copy(ref_cell.number_format)
                             new_cell.protection = copy(ref_cell.protection)
                             new_cell.alignment = copy(ref_cell.alignment)
 
-                    # Destaque de ausência (sobrescreve estilos anteriores se necessário)
+                    # Garantir fundo limpo para todas as linhas que não são Fatura Pai
+                    if not is_parent:
+                        new_cell.fill = openpyxl.styles.PatternFill(fill_type=None)
+
+                    # Destaque de ausência (apenas na fonte, fundo permanece limpo)
                     # Aplica-se a qualquer linha (pai ou filha) que tenha campos críticos vazios
                     is_empty = val is None or str(val).strip().lower() in ["", "nan", "nat", "none"]
                     if is_empty and base_col in {"Vencimento", "Status Pos-Faturamento"}:
-                        new_cell.fill = missing_fill
                         new_cell.font = missing_font
                         
                         # Adicionar comentário na coluna No. UC ou Instalação (se disponível)
