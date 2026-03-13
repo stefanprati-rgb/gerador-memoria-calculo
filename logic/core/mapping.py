@@ -85,7 +85,7 @@ def get_required_columns() -> list[str]:
     cols = set(COLUMN_MAPPING.keys())
     cols.add(GROUPING_FLAG_COL)
     cols.update(GROUPING_KEYS)
-    # Incluir colunas de hierarquia para o agrupamento correto
+    # Incluir colunas de hierarquia (Balanço Energético) para o agrupamento correto
     cols.add(HIERARCHY_KEY_COL)
     cols.add(HIERARCHY_PARENT_COL)
     return list(cols)
