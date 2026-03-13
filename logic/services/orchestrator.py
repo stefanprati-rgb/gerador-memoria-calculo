@@ -5,14 +5,12 @@ Suporta faturamento agrupado (Fatura Pai + UCs Filhas).
 from logic.adapters.excel_adapter import BaseExcelReader, TemplateExcelWriter
 from logic.core.mapping import (
     COLUMN_MAPPING,
-    ENRICHMENT_MAPPING,
     GROUPING_FLAG_COL,
     GROUPING_FLAG_VALUE,
     GROUPING_KEYS,
     SUM_COLUMNS,
     PARENT_ROW_FLAG,
     CLIENT_COLUMN,
-    GRUPO_1_MAPPING,
 )
 import pandas as pd
 from typing import Any, List, Optional, Dict
@@ -173,86 +171,25 @@ class Orchestrator:
             logger.warning("Nenhum dado restante após filtro de completude.")
             return None
 
-        # DETECÇÃO E ROTEAMENTO GRUPO 1
-        # Se for Grupo 1 (A3/A4 - Alta Tensão), usamos agregação por CPF/CNPJ e mapping específico.
-        # Por enquanto identificamos pelo cliente DELCI, mas pode ser expandido.
-        is_group_1 = any("DELCI" in str(c).upper() for c in selected_clients)
+        # Fluxo de Layout Único (14 Colunas)
+        processed_df = self._apply_grouping(filtered_df)
         
-        if is_group_1:
-            # Preparar dataframe temporário para agregação
-            temp_df = filtered_df.copy()
-
-            # Garantir colunas obrigatórias vindas da Gestão ou do Balanço
-            # Fallbacks: Valor e Base vêm do Custo se não existirem na Gestão
-            if "Valor_gestao" not in temp_df.columns: temp_df["Valor_gestao"] = temp_df["Custo c/ GD"]
-            else: temp_df["Valor_gestao"] = temp_df["Valor_gestao"].fillna(temp_df["Custo c/ GD"])
-            
-            if "Base_gestao" not in temp_df.columns: temp_df["Base_gestao"] = temp_df["Custo s/ GD"]
-            else: temp_df["Base_gestao"] = temp_df["Base_gestao"].fillna(temp_df["Custo s/ GD"])
-
-            # Outras colunas obrigatórias para o mapping final
-            for col in ["Vencimento", "Status Pos-Faturamento", "_is_duplicate_gestao"]:
-                if col not in temp_df.columns:
-                    temp_df[col] = False if col == "_is_duplicate_gestao" else pd.NA
-
-            # 1. Agrupar por No. UC e Referencia (Instalação Física)
-            # Para detectar Conta dupla, olhamos a flag vinda do SyncService.
-            # Para detectar Sem fatura, olhamos se o Vencimento (vinculado à Gestão) é nulo.
-            
-            def format_status_agg(idx):
-                group_rows = temp_df.loc[idx]
-                statuses = set(str(v).strip() for v in group_rows["Status Pos-Faturamento"] if pd.notna(v) and str(v).strip())
-                
-                res = list(statuses)
-                if not res: res = ["Em Aberto"]
-                
-                if group_rows["_is_duplicate_gestao"].any():
-                    res.append("Conta dupla")
-                
-                return "\n".join(sorted(set(res)))
-
-            agg_df = temp_df.groupby(["No. UC", "Referencia"], as_index=False).agg({
-                "Razao Social": "first",
-                "Vencimento": "first",
-                "Valor_gestao": "first",
-                "Base_gestao": "first",
-                "Boleto Raizen": "first",
-                "Status Pos-Faturamento": lambda x: format_status_agg(x.index),
-            })
-            
-            # Pós-processamento de Status: Sem fatura
-            mask_sem_fatura = agg_df["Vencimento"].isna()
-            agg_df.loc[mask_sem_fatura, "Status Pos-Faturamento"] = \
-                agg_df.loc[mask_sem_fatura, "Status Pos-Faturamento"].apply(lambda s: s + "\nSem fatura")
-
-            # 2. Rename e Enforce strictly 8 columns
-            # Primeiro renomeamos para os nomes finais exigidos pelo usuário no mapping
-            agg_df.rename(columns=GRUPO_1_MAPPING, inplace=True)
-            
-            # Agora filtramos estritamente pelas etiquetas de destino (os valores do mapping)
-            final_columns = list(GRUPO_1_MAPPING.values())
-            processed_df = agg_df.reindex(columns=final_columns)
-            
-            # Como já renomeamos, passamos um mapping identidade (para o ExcelWriter não tentar renomear de novo)
-            full_mapping = {c: c for c in final_columns}
-        else:
-            # Fluxo Legado (Individual/Agrupamento Raizen)
-            processed_df = self._apply_grouping(filtered_df)
-            
-            # 1. Garantir que todas as colunas do mapping existam (defensivo)
-            legacy_keys = list(COLUMN_MAPPING.keys())
-            for col in legacy_keys:
-                if col not in processed_df.columns:
-                    processed_df[col] = pd.NA
-            
-            # 2. Filtrar e Reordenar estritamente para as 14 colunas + flag interna
-            processed_df = processed_df.reindex(columns=legacy_keys + [PARENT_ROW_FLAG])
-            
-            # 3. O Mapping deve seguir EXATAMENTE a ordem de chaves do COLUMN_MAPPING
-            from collections import OrderedDict
-            full_mapping = OrderedDict()
-            for k in legacy_keys:
-                full_mapping[k] = COLUMN_MAPPING[k]
+        # 1. Garantir que todas as colunas do mapping existam (defensivo)
+        legacy_keys = list(COLUMN_MAPPING.keys())
+        for col in legacy_keys:
+            if col not in processed_df.columns:
+                processed_df[col] = pd.NA
+        
+        # 2. Reordenar e restringir estritamente para as 14 colunas do mapping + flag interna
+        # Isso garante que nenhuma coluna de enriquecimento ou controle vaze para o Excel final
+        legacy_columns = list(COLUMN_MAPPING.keys())
+        processed_df = processed_df.reindex(columns=legacy_columns + [PARENT_ROW_FLAG])
+        
+        # 3. O Mapping deve seguir EXATAMENTE a ordem de chaves do COLUMN_MAPPING (14 colunas)
+        from collections import OrderedDict
+        full_mapping = OrderedDict()
+        for k in legacy_columns:
+            full_mapping[k] = COLUMN_MAPPING[k]
 
         writer = TemplateExcelWriter(self.template_file)
         excel_bytes = writer.generate_bytes(processed_df, full_mapping)

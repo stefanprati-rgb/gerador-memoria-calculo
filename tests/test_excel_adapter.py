@@ -179,14 +179,13 @@ class TestTemplateExcelWriter:
         })
 
         writer = TemplateExcelWriter(sample_template_xlsx)
-        mapping = {"Tarifa Raizen": "Tarifa Raizen", "No. UC": "No. UC"}
-        result = writer.generate_bytes(df, mapping)
+        result = writer.generate_bytes(df, COLUMN_MAPPING)
 
         wb = openpyxl.load_workbook(io.BytesIO(result))
         ws = wb.active
         
         # O valor no Excel deve ser 0
-        # Tarifa Raizen está na coluna 11 no sample_template_xlsx
+        # Tarifa Raizen está na coluna 11 no COLUMN_MAPPING
         assert ws.cell(row=2, column=11).value == 0.0
 
     def test_formatacao_referencia_full_date(self, sample_template_xlsx):
@@ -217,13 +216,12 @@ class TestTemplateExcelWriter:
         })
 
         writer = TemplateExcelWriter(sample_template_xlsx)
-        mapping = {"Vencimento": "Vencimento", "No. UC": "No. UC"}
-        result = writer.generate_bytes(df, mapping)
+        result = writer.generate_bytes(df, COLUMN_MAPPING)
 
         wb = openpyxl.load_workbook(io.BytesIO(result))
         ws = wb.active
         
-        # Vencimento está na coluna 8 no sample_template_xlsx
+        # Vencimento está na coluna 8 no COLUMN_MAPPING
         cell = ws.cell(row=2, column=8)
         
         # FFE0B2 é o laranja claro. openpyxl retorna com o prefixo FF para opacidade total.
@@ -239,13 +237,12 @@ class TestTemplateExcelWriter:
         })
 
         writer = TemplateExcelWriter(sample_template_xlsx)
-        mapping = {"Vencimento": "Vencimento", "No. UC": "No. UC"}
-        result = writer.generate_bytes(df, mapping)
+        result = writer.generate_bytes(df, COLUMN_MAPPING)
 
         wb = openpyxl.load_workbook(io.BytesIO(result))
         ws = wb.active
         
-        # No. UC está na coluna 2 no sample_template_xlsx
+        # No. UC está na coluna 2 no COLUMN_MAPPING
         uc_cell = ws.cell(row=2, column=2)
         assert uc_cell.comment is not None
         assert "Dado ausente" in uc_cell.comment.text
