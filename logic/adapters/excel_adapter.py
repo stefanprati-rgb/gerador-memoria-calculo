@@ -277,30 +277,26 @@ class TemplateExcelWriter:
         ws = wb.active
 
         # 1. Mapear e Enforcar Layout (Strict layout)
-        # Para evitar o "monstro de 16 colunas", vamos limpar a linha de cabeçalho
-        # e reconstruir exatamente na ordem do mapping.
+        # Limpamos a linha de cabeçalho e reconstruímos exatamente na ordem do mapping.
         header_row_idx = 1
-        
-        # Guardar max_column original para limpeza posterior
         original_max_col = ws.max_column
         
-        # Limpar todos os valores na linha de cabeçalho para evitar resíduos
+        # Limpeza radical da linha de cabeçalho
         for c in range(1, original_max_col + 1):
             ws.cell(row=header_row_idx, column=c).value = None
 
         template_col_to_idx = {}
         for idx, (logical_name, target_label) in enumerate(column_mapping.items(), 1):
-            # Normalizar label caso venha com espaços
             target_label = target_label.strip()
             # Escrever novo header
             ws.cell(row=header_row_idx, column=idx, value=target_label)
             # Mapear nome lógico da fonte para este índice físico
             template_col_to_idx[logical_name] = idx
             
-        # Deletar colunas impiedosamente que não estão no mapping
-        if original_max_col > len(column_mapping):
-            # Deletamos desde a coluna N+1 até o máximo encontrado no template original + margem de segurança
-            ws.delete_cols(len(column_mapping) + 1, original_max_col)
+        # Deletar colunas fisicamente a partir da posição 15 (garantindo layout estrito de 14 colunas)
+        expected_cols = 14
+        if original_max_col > expected_cols:
+            ws.delete_cols(expected_cols + 1, original_max_col - expected_cols + 50)  # +50 margem de segurança
 
         # Sempre começar a escrever dados na linha 2, limpando qualquer resíduo do template
         start_row = 2
