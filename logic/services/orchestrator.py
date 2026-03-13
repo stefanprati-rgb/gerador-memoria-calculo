@@ -101,9 +101,21 @@ class Orchestrator:
         # O UC p Rateio é a chave definitiva que diz quais UCs moram juntas numa fatura.
         keys = ["Referencia", CLIENT_COLUMN]
         
+        # Sanitização rigorosa de tipos para chaves de identificação (UCs)
+        # Excel costuma carregar números como float (1.0), o que quebra o de-para com strings ("1")
+        for col in ["No. UC", HIERARCHY_KEY_COL]:
+            if col in df.columns:
+                df[col] = (
+                    df[col]
+                    .astype(str)
+                    .str.replace(r"\.0$", "", regex=True)
+                    .str.strip()
+                    .replace("nan", pd.NA)  # Voltar pd.NA real após converter para str
+                )
+
         # Se tivermos a coluna de hierarquia, ela é nossa chave principal de grupo
         if HIERARCHY_KEY_COL in df.columns:
-            # Preencher N/A para não perder registros no groupby
+            # Preencher com No. UC se estiver vazio (indica que a UC é sua própria raiz)
             df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df["No. UC"])
             keys.append(HIERARCHY_KEY_COL)
         else:
