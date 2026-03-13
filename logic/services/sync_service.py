@@ -148,7 +148,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                 s = str(val).strip()
                 if s.endswith(".0"): s = s[:-2]
                 s = ''.join(filter(str.isdigit, s))
-                return s
+                return s.lstrip('0')
             
             # 2. Normalizar e colher conjunto total de UCs na gestão para o relatório
             df_gestao["No. UC_norm"] = df_gestao[uc_col].apply(normalize_uc)
@@ -208,7 +208,9 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             # Limpeza de valores numéricos na Gestão (R$ 1.234,56 -> 1234.56)
             for col in ["Valor_gestao", "Base_gestao"]:
                 if col in df_gestao.columns:
-                    df_gestao[col] = df_gestao[col].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+                    # Só limpar se for string. Se já for numeric (float/int), não mexer.
+                    if pd.api.types.is_string_dtype(df_gestao[col]):
+                        df_gestao[col] = df_gestao[col].str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
                     df_gestao[col] = pd.to_numeric(df_gestao[col], errors="coerce")
 
             # 5. Realizar o Merge (Cruzamento)
@@ -229,6 +231,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                 df_gestao = df_gestao.sort_values("_venc_sort", ascending=False)
             
             # Reportar duplicatas ANTES do drop (para transparência)
+            dupes_count = df_gestao.duplicated(subset=merge_keys).sum()
             if dupes_count > 0:
                 logger.warning("Base de Gestão contém %d faturas duplicadas para a mesma UC+Período. Elas serão marcadas como 'Conta dupla'.", dupes_count)
 
