@@ -15,6 +15,11 @@ from logic.core.mapping import (
     GROUPING_IBM_COL,
     PARENT_ROW_FLAG,
     CLIENT_COLUMN,
+    CLASSIFICATION_SOURCE_COL,
+    CLASSIFICATION_FATURA_VALUES,
+    CLASSIFICATION_LABEL_FATURA,
+    CLASSIFICATION_LABEL_REGRA,
+    CLASSIFICATION_COL,
 )
 import pandas as pd
 from typing import Any, List, Optional, Dict
@@ -178,6 +183,59 @@ class Orchestrator:
             return pd.Series(False, index=df.index)
         return df["Vencimento"].isna() | (df["Vencimento"].astype(str).str.strip().str.lower().isin(["", "nan", "nat", "none"]))
 
+    def _apply_classification(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Deriva a coluna de classificação com base em CLASSIFICATION_SOURCE_COL ('Fonte dos Dados').
+
+        Regras:
+          - 'Fatura' → CLASSIFICATION_LABEL_FATURA  (leitura real / PDF)
+          - Qualquer outro valor → CLASSIFICATION_LABEL_REGRA  (estimativa/contrato/demonstrativo)
+          - Linha 'Fatura Pai' (agrupada) → rótulo mais frequente entre as filhas do grupo;
+            desempate a favor de CLASSIFICATION_LABEL_REGRA.
+          - Coluna ausente na base → preenche com CLASSIFICATION_LABEL_REGRA.
+        """
+        df = df.copy()
+
+        if CLASSIFICATION_SOURCE_COL not in df.columns:
+            logger.warning(
+                "Coluna '%s' não encontrada na base. Classificação preenchida como '%s' para todas as linhas.",
+                CLASSIFICATION_SOURCE_COL, CLASSIFICATION_LABEL_REGRA,
+            )
+            df[CLASSIFICATION_COL] = CLASSIFICATION_LABEL_REGRA
+            return df
+
+        def _classify(val):
+            if pd.isna(val):
+                return CLASSIFICATION_LABEL_REGRA
+            return CLASSIFICATION_LABEL_FATURA if str(val).strip() in CLASSIFICATION_FATURA_VALUES else CLASSIFICATION_LABEL_REGRA
+
+        df[CLASSIFICATION_COL] = df[CLASSIFICATION_SOURCE_COL].apply(_classify)
+
+        # Corrigir linhas Pai: usar o rótulo mais comum entre as filhas do mesmo grupo
+        parent_mask = df.get(PARENT_ROW_FLAG, pd.Series(False, index=df.index)).astype(bool)
+        if parent_mask.any() and CLASSIFICATION_COL in df.columns:
+            # Para cada linha pai, pegar o índice imediatamente posterior (as filhas virão depois)
+            # Como as filhas ficam logo após o pai no DataFrame, usamos um range simples.
+            parent_indices = df.index[parent_mask].tolist()
+            for pi in parent_indices:
+                loc = df.index.get_loc(pi)
+                # Faturas filhas são todas as linhas não-pai após o pai até o próximo pai (ou fim)
+                remaining = df.iloc[loc + 1:]
+                next_parents = remaining.index[remaining.get(PARENT_ROW_FLAG, pd.Series(False, index=remaining.index)).astype(bool)]
+                end_loc = df.index.get_loc(next_parents[0]) if len(next_parents) > 0 else len(df)
+                child_labels = df.iloc[loc + 1:end_loc][CLASSIFICATION_COL]
+                if not child_labels.empty:
+                    counts = child_labels.value_counts()
+                    majority_label = counts.index[0] if counts.iloc[0] > counts.sum() / 2 else CLASSIFICATION_LABEL_REGRA
+                    df.at[pi, CLASSIFICATION_COL] = majority_label
+
+        logger.info(
+            "Classificação aplicada: %d 'Fatura' / %d 'Regra de Negócio'.",
+            (df[CLASSIFICATION_COL] == CLASSIFICATION_LABEL_FATURA).sum(),
+            (df[CLASSIFICATION_COL] == CLASSIFICATION_LABEL_REGRA).sum(),
+        )
+        return df
+
     def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all") -> Optional[bytes]:
         """
         Filtra a base, aplica agrupamento e gera o arquivo Excel com os dados mapeados.
@@ -207,8 +265,9 @@ class Orchestrator:
             logger.warning("Nenhum dado restante após filtro de completude.")
             return None
 
-        # Fluxo de Layout Único (14 Colunas)
+        # Fluxo de Layout Único (14 Colunas + Classificação)
         processed_df = self._apply_grouping(filtered_df)
+        processed_df = self._apply_classification(processed_df)
         
         # 1. Garantir que todas as colunas do mapping existam (defensivo)
         legacy_keys = list(COLUMN_MAPPING.keys())
@@ -216,7 +275,7 @@ class Orchestrator:
             if col not in processed_df.columns:
                 processed_df[col] = pd.NA
         
-        # 2. Reordenar e restringir estritamente para as 14 colunas do mapping + flag interna
+        # 2. Reordenar e restringir estritamente para as 15 colunas do mapping + flag interna
         # Isso garante que nenhuma coluna de enriquecimento ou controle vaze para o Excel final
         legacy_columns = list(COLUMN_MAPPING.keys())
         processed_df = processed_df.reindex(columns=legacy_columns + [PARENT_ROW_FLAG])
