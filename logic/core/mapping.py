@@ -41,6 +41,20 @@ SUM_COLUMNS = [
 # Flag interna para marcar linhas "Fatura Pai" no DataFrame (não existe na base)
 PARENT_ROW_FLAG = "_is_parent"
 
+# --- CLASSIFICAÇÃO DE ORIGEM ---
+# Coluna da base que indica a origem do dado (Fatura, Contrato, Demonstrativo etc.)
+CLASSIFICATION_SOURCE_COL = "Fonte dos Dados"
+
+# Valor(es) que classificam como "Fatura" (leitura real / PDF)
+CLASSIFICATION_FATURA_VALUES = {"Fatura"}
+
+# Rótulos aplicados na coluna de saída
+CLASSIFICATION_LABEL_FATURA = "Fatura"
+CLASSIFICATION_LABEL_REGRA = "Regra de Negócio"
+
+# Nome da coluna de saída no relatório
+CLASSIFICATION_COL = "Classificação"
+
 # --- MAPEAMENTO BASE → TEMPLATE ---
 COLUMN_MAPPING = {
     # 'Coluna na base Balanço Energético': 'Coluna no destino'
@@ -58,6 +72,8 @@ COLUMN_MAPPING = {
     "Custo c/ GD": "Custo c/ GD",
     "Custo s/ GD": "Custo s/ GD",
     "Ganho total Padrão": "Ganho total Padrão",
+    # Coluna calculada — não vem diretamente da base, é derivada de CLASSIFICATION_SOURCE_COL
+    CLASSIFICATION_COL: CLASSIFICATION_COL,
 }
 
 # Coluna usada para identificar clientes na interface (seleção por nome)
@@ -86,6 +102,8 @@ def get_template_columns() -> list[str]:
 def get_required_columns() -> list[str]:
     """Retorna TODAS as colunas necessárias para leitura otimizada (mapeamento + agrupamento)."""
     cols = set(COLUMN_MAPPING.keys())
+    # A coluna de classificação é derivada, não lida da base — remover do usecols
+    cols.discard(CLASSIFICATION_COL)
     cols.add(GROUPING_FLAG_COL)
     cols.update(GROUPING_KEYS)
     # Incluir colunas de hierarquia (Balanço Energético) para o agrupamento correto
@@ -93,4 +111,6 @@ def get_required_columns() -> list[str]:
     cols.add(HIERARCHY_PARENT_COL)
     # Incluir coluna comercial IBM
     cols.add(GROUPING_IBM_COL)
+    # Incluir coluna de origem para classificação
+    cols.add(CLASSIFICATION_SOURCE_COL)
     return list(cols)
