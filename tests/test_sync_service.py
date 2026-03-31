@@ -428,3 +428,4 @@ def test_pendencias_vazio_quando_todos_completos(mock_balanco_df, tmp_path, monk
     assert success is True
     assert report["total_ucs_sem_vencimento"] == 0
     assert len(report["pendencias"]) == 0
+# Force CI re-run
