@@ -39,11 +39,12 @@ class TestBaseExcelReader:
             BaseExcelReader(str(path))
 
     def test_colunas_validadas(self, sample_base_xlsx):
-        """Deve validar que as colunas obrigatórias estão presentes."""
+        """Deve validar que as colunas obrigatórias (não-opcionais) estão presentes."""
         reader = BaseExcelReader(sample_base_xlsx)
-        from logic.core.mapping import get_base_columns
-        for col in get_base_columns():
-            assert col in reader.df.columns
+        from logic.core.mapping import get_base_columns, OPTIONAL_BASE_COLUMNS
+        required_cols = [c for c in get_base_columns() if c not in OPTIONAL_BASE_COLUMNS]
+        for col in required_cols:
+            assert col in reader.df.columns, f"Coluna obrigatória ausente: {col}"
 
     def test_coluna_faltante_levanta_erro(self, tmp_path):
         """Deve levantar ColumnValidationError se uma coluna obrigatória faltar."""

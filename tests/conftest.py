@@ -31,6 +31,8 @@ def sample_base_df():
         "Ganho total Padrão": [350.00, 520.50, 370.25, 200.00, 180.00, 150.00],
         # Gamma (2 UCs) e Delta (1 UC sozinha) marcados como Agrupamento
         "Excecao Fat.": [None, None, None, "Agrupamento", "Agrupamento", "Agrupamento"],
+        # Coluna de origem do dado (determina a classificação no relatório de saída)
+        "Fonte dos Dados": ["Fatura", "Contrato", "Fatura", "Demonstrativo Portal", "Fatura", "Contrato"],
     })
 
 
@@ -77,7 +79,7 @@ def sample_template_xlsx(tmp_path):
         "Cred. Consumido Raizen", "Desconto Contratado",
         "Vencimento", "Status Pos-Faturamento", "Boleto Raizen",
         "Tarifa Raizen", "Custo c/ GD", "Custo s/ GD",
-        "Ganho total Padrão"
+        "Ganho total Padrão", "Classificação"
     ]
 
     for col_idx, header in enumerate(headers, 1):
