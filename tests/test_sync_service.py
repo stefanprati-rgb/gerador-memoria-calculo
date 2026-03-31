@@ -156,28 +156,6 @@ def test_sync_service_merge_row_expansion_limit(mock_balanco_df, tmp_path, monke
         "Status": ["Pago", "Pago", "Atrasado"]
     })
     
-    # Note: O sync_service faz drop_duplicates(keep='last') na gestão antes do merge.
-    # Para forçar a expansão, precisamos que as chaves de merge sejam diferentes OU bugar o drop_duplicates.
-    # Mas o código atual FAZ drop_duplicates antes do merge!
-    # "Deduplicar gestão preservando o período"
-    # df_gestao = df_gestao.drop_duplicates(subset=merge_keys, keep="last")
-    
-    # Se o drop_duplicates está lá, o merge nunca deve gerar linhas extras a menos que MERGE_KEYS falhe.
-    # Ah! O problema descrito na tarefa diz: "Um merge que produz mais linhas que a base original (por duplicatas na Gestão) passa silenciosamente"
-    # Se o drop_duplicates já existe, talvez ele não seja suficiente ou as chaves estejam incompletas.
-    
-    # Vamos olhar o código do sync_service novamente.
-    # merge_keys = ["No. UC_norm"]
-    # if ref_merge_col in df_gestao.columns and ref_merge_col in df_consolidado.columns:
-    #     merge_keys.append(ref_merge_col)
-    
-    # Se eu quiser testar a VALIDAÇÃO, eu preciso forçar a expansão.
-    # Se eu remover o drop_duplicates no teste (via monkeypatch ou similar) eu posso testar a validação.
-    # Mas a tarefa Pede para adicionar a validação PORQUE o merge pode produzir mais linhas.
-    
-    # Se eu criar uma gestão que DESAFIA o drop_duplicates atual?
-    # O drop_duplicates usa merge_keys, que inclui Referencia_merge se disponível.
-    
     # Vamos forçar a falha da validação mockando o pd.merge no módulo sync para retornar um DF maior.
     original_pd_merge = pd.merge
     def mock_merge_expansive(*args, **kwargs):
@@ -428,4 +406,3 @@ def test_pendencias_vazio_quando_todos_completos(mock_balanco_df, tmp_path, monk
     assert success is True
     assert report["total_ucs_sem_vencimento"] == 0
     assert len(report["pendencias"]) == 0
-# Force CI re-run
