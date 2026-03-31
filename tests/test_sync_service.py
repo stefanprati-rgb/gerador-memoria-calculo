@@ -1,3 +1,6 @@
+"""
+Testes para o serviço de sincronização e consolidação de dados.
+"""
 import sys
 import os
 import io
@@ -8,12 +11,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
 
 # === GARANTIR PYTHONPATH PARA CI ===
-# Insere o root do projeto no path antes de importar módulos internos
-_PROJECT_ROOT = Path(__file__).resolve().parents[1]  # sobe dois níveis: tests/ -> project/
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-# Só agora importe os módulos do projeto
+# Imports do projeto (só após configurar sys.path)
 from logic.services.sync_service import (
     build_consolidated_cache_from_uploads,
     build_consolidated_cache_from_local_network,
@@ -22,12 +24,14 @@ from logic.services.sync_service import (
     _save_parquet_safe
 )
 
+
 @pytest.fixture(autouse=True)
 def debug_pythonpath(request):
     """Mostra sys.path apenas se pytest rodar com -v ou --verbose"""
     if request.config.getoption("verbose") > 0:
-        print(f"\n[DEBUG] PYTHONPATH: {sys.path[:3]}...")  # mostra os 3 primeiros
+        print(f"\n[DEBUG] PYTHONPATH: {sys.path[:3]}...")
     yield
+
 
 @pytest.fixture
 def isolated_cache_dirs(tmp_path, monkeypatch):
@@ -59,6 +63,7 @@ def isolated_cache_dirs(tmp_path, monkeypatch):
         "gestao_local": gestao_local,
     }
 
+
 @pytest.fixture
 def mock_balanco_df():
     """Simula a aba Balanco Operacional com UCs sujas."""
@@ -73,6 +78,7 @@ def mock_balanco_df():
         "Status Pos-Faturamento": ["Em aberto", "Em aberto", "Em aberto", "Em aberto"]
     })
 
+
 @pytest.fixture
 def mock_gestao_df():
     """Simula a planilha Gestão Cobrança com UCs de inteiros."""
@@ -85,6 +91,7 @@ def mock_gestao_df():
         "Data de Cancelamento": [np.nan, np.nan, "10-02-2026", np.nan]
     })
 
+
 def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cache_dirs, monkeypatch):
     """Testa se a normalização de UC e período funciona e se cancelados são preservados."""
     import logic.services.sync_service as sync
@@ -96,6 +103,7 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cach
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
     
     balanco_bytes = b"fake_balanco"
+    
     gestao_io = io.BytesIO()
     mock_gestao_df.to_excel(gestao_io, index=False, engine='openpyxl')
     gestao_bytes = gestao_io.getvalue()
@@ -103,9 +111,12 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cach
     success, report = sync.build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, firebase_client=None)
     
     assert success is True
+    # ✅ USAR isolated_cache_dirs["parquet"], NÃO parquet_path
     assert isolated_cache_dirs["parquet"].exists()
     
+    # ✅ USAR _read_parquet_safe + isolated_cache_dirs["parquet"]
     df_result = _read_parquet_safe(str(isolated_cache_dirs["parquet"]))
+    
     df_result["No. UC"] = pd.to_numeric(df_result["No. UC"], errors="coerce")
 
     # 1. UC 42074274.0 deve casar com o inteiro 42074274
@@ -114,15 +125,14 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cach
     
     assert cliente_a_jan["Vencimento"] == "10-02-2026"
     assert cliente_a_jan["Status Pos-Faturamento"] == "Pago"
-    
     assert cliente_a_fev["Vencimento"] == "10-03-2026"
     assert cliente_a_fev["Status Pos-Faturamento"] == "Atrasado"
     
-    # 2. Cliente B foi "Cancelado" na Gestão ("Sim") - COMPORTAMENTO ATUAL: PRESERVAR
+    # 2. Cliente B cancelado: COMPORTAMENTO ATUAL = PRESERVAR (não remover)
     mask_b = df_result["No. UC"] == 5143128.0
     assert mask_b.sum() == 1, "Fatura cancelada deveria permanecer na base consolidada"
     
-    # 3. Cliente C tem Fev/2026 na base e usa uma string gigantesca.
+    # 3. Cliente C com UC string gigante
     cliente_c = df_result[(df_result["No. UC"] == 4000476449.0)].iloc[0]
     assert cliente_c["Vencimento"] == "20-03-2026"
     assert cliente_c["Status Pos-Faturamento"] == "Pago"
@@ -175,7 +185,9 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_di
     success, report = sync.build_consolidated_cache_from_uploads(b"fake", None)
     assert success is True
     
+    # ✅ USAR _read_parquet_safe + isolated_cache_dirs["parquet"]
     df_result = _read_parquet_safe(str(isolated_cache_dirs["parquet"]))
+    
     assert df_result["Status Pos-Faturamento"].dtype == object or df_result["Status Pos-Faturamento"].dtype.name == 'string'
     assert isinstance(df_result["Status Pos-Faturamento"].iloc[0], str)
 
@@ -206,6 +218,7 @@ def test_cancelado_nao_contamina_ativo(mock_balanco_df, isolated_cache_dirs, mon
     success, report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_bytes)
     assert success is True
     
+    # ✅ USAR _read_parquet_safe + isolated_cache_dirs["parquet"] + formato DD/MM/YYYY
     df_result = _read_parquet_safe(str(isolated_cache_dirs["parquet"]))
     jan_entry = df_result[(df_result["No. UC"].astype(float) == 42074274.0) & (df_result["Referencia"] == "01/01/2026")]
     assert not jan_entry.empty
@@ -239,6 +252,7 @@ def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, isolated_cache_
     success, report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_bytes)
     assert success is True
     
+    # ✅ USAR _read_parquet_safe + isolated_cache_dirs["parquet"] + formato DD/MM/YYYY
     df_result = _read_parquet_safe(str(isolated_cache_dirs["parquet"]))
     jan_entry = df_result[(df_result["No. UC"].astype(float) == 42074274.0) & (df_result["Referencia"] == "01/01/2026")]
     assert not jan_entry.empty
