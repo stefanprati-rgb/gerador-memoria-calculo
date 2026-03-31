@@ -1,3 +1,6 @@
+"""
+Testes para o serviço de sincronização e consolidação de dados.
+"""
 import sys
 import os
 import io
@@ -8,12 +11,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
 
 # === GARANTIR PYTHONPATH PARA CI ===
-# Insere o root do projeto no path antes de importar módulos internos
-_PROJECT_ROOT = Path(__file__).resolve().parents[1]  # sobe dois níveis: tests/ -> project/
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-# Só agora importe os módulos do projeto
+# Imports do projeto (só após configurar sys.path)
 from logic.services.sync_service import (
     build_consolidated_cache_from_uploads,
     build_consolidated_cache_from_local_network,
@@ -22,12 +24,14 @@ from logic.services.sync_service import (
     _save_parquet_safe
 )
 
+
 @pytest.fixture(autouse=True)
 def debug_pythonpath(request):
     """Mostra sys.path apenas se pytest rodar com -v ou --verbose"""
     if request.config.getoption("verbose") > 0:
-        print(f"\n[DEBUG] PYTHONPATH: {sys.path[:3]}...")  # mostra os 3 primeiros
+        print(f"\n[DEBUG] PYTHONPATH: {sys.path[:3]}...")
     yield
+
 
 @pytest.fixture
 def isolated_cache_dirs(tmp_path, monkeypatch):
@@ -59,6 +63,7 @@ def isolated_cache_dirs(tmp_path, monkeypatch):
         "gestao_local": gestao_local,
     }
 
+
 @pytest.fixture
 def mock_balanco_df():
     """Simula a aba Balanco Operacional com UCs sujas."""
@@ -73,6 +78,7 @@ def mock_balanco_df():
         "Status Pos-Faturamento": ["Em aberto", "Em aberto", "Em aberto", "Em aberto"]
     })
 
+
 @pytest.fixture
 def mock_gestao_df():
     """Simula a planilha Gestão Cobrança com UCs de inteiros."""
@@ -85,8 +91,10 @@ def mock_gestao_df():
         "Data de Cancelamento": [np.nan, np.nan, "10-02-2026", np.nan]
     })
 
+
 def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cache_dirs, monkeypatch):
     """Testa se a normalização de UC e período funciona e se cancelados são preservados."""
+    parquet_path = isolated_cache_dirs["parquet"]
     import logic.services.sync_service as sync
     
     # Criar um BaseExcelReader mockado que já retorna o mock_balanco_df
@@ -97,6 +105,7 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cach
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
     
     balanco_bytes = b"fake_balanco"
+    
     gestao_io = io.BytesIO()
     mock_gestao_df.to_excel(gestao_io, index=False, engine='openpyxl')
     gestao_bytes = gestao_io.getvalue()
@@ -122,7 +131,6 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cach
     
     assert cliente_a_jan["Vencimento"] == "10-02-2026"
     assert cliente_a_jan["Status Pos-Faturamento"] == "Pago"
-    
     assert cliente_a_fev["Vencimento"] == "10-03-2026"
     assert cliente_a_fev["Status Pos-Faturamento"] == "Atrasado"
     
@@ -130,7 +138,7 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cach
     mask_b = df_result["No. UC"] == 5143128.0
     assert mask_b.sum() == 1, "Fatura cancelada deveria permanecer na base consolidada"
     
-    # 3. Cliente C tem Fev/2026 na base e usa uma string gigantesca.
+    # 3. Cliente C com UC string gigante
     cliente_c = df_result[(df_result["No. UC"] == 4000476449.0)].iloc[0]
     assert cliente_c["Vencimento"] == "20-03-2026"
     assert cliente_c["Status Pos-Faturamento"] == "Pago"
@@ -179,6 +187,7 @@ def test_sync_service_merge_row_expansion_limit(mock_balanco_df, tmp_path, monke
 
 def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_dirs, monkeypatch):
     """Confirma que colunas na lista de exclusão não são convertidas para numérico."""
+    parquet_path = isolated_cache_dirs["parquet"]
     import logic.services.sync_service as sync
     
     class MockExcelReader:
@@ -199,6 +208,7 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_di
 
 def test_cancelado_nao_contamina_ativo(mock_balanco_df, tmp_path, monkeypatch):
     """Gestão com dois registros para a mesma UC+Período: um cancelado e um ativo."""
+    parquet_path = isolated_cache_dirs["parquet"]
     import logic.services.sync_service as sync
     import io
     
@@ -231,6 +241,7 @@ def test_cancelado_nao_contamina_ativo(mock_balanco_df, tmp_path, monkeypatch):
 
 def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, tmp_path, monkeypatch):
     """UC existe na gestão mas apenas em outro período."""
+    parquet_path = isolated_cache_dirs["parquet"]
     import logic.services.sync_service as sync
     import io
     
