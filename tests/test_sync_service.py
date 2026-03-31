@@ -94,6 +94,7 @@ def mock_gestao_df():
 
 def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cache_dirs, monkeypatch):
     """Testa se a normalização de UC e período funciona e se cancelados são preservados."""
+    parquet_path = isolated_cache_dirs["parquet"]
     import logic.services.sync_service as sync
     
     class MockExcelReader:
@@ -111,11 +112,9 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cach
     success, report = sync.build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, firebase_client=None)
     
     assert success is True
-    # ✅ USAR isolated_cache_dirs["parquet"], NÃO parquet_path
-    assert isolated_cache_dirs["parquet"].exists()
+    assert parquet_path.exists()
     
-    # ✅ USAR _read_parquet_safe + isolated_cache_dirs["parquet"]
-    df_result = _read_parquet_safe(str(isolated_cache_dirs["parquet"]))
+    df_result = _read_parquet_safe(str(parquet_path))
     
     df_result["No. UC"] = pd.to_numeric(df_result["No. UC"], errors="coerce")
 
@@ -172,6 +171,7 @@ def test_sync_service_merge_row_expansion_limit(mock_balanco_df, isolated_cache_
 
 def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_dirs, monkeypatch):
     """Confirma que colunas na lista de exclusão não são convertidas para numérico."""
+    parquet_path = isolated_cache_dirs["parquet"]
     import logic.services.sync_service as sync
     
     class MockExcelReader:
@@ -185,8 +185,7 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_di
     success, report = sync.build_consolidated_cache_from_uploads(b"fake", None)
     assert success is True
     
-    # ✅ USAR _read_parquet_safe + isolated_cache_dirs["parquet"]
-    df_result = _read_parquet_safe(str(isolated_cache_dirs["parquet"]))
+    df_result = _read_parquet_safe(str(parquet_path))
     
     assert df_result["Status Pos-Faturamento"].dtype == object or df_result["Status Pos-Faturamento"].dtype.name == 'string'
     assert isinstance(df_result["Status Pos-Faturamento"].iloc[0], str)
@@ -194,6 +193,7 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_di
 
 def test_cancelado_nao_contamina_ativo(mock_balanco_df, isolated_cache_dirs, monkeypatch):
     """Gestão com dois registros para a mesma UC+Período: um cancelado e um ativo."""
+    parquet_path = isolated_cache_dirs["parquet"]
     import logic.services.sync_service as sync
     import io
     
@@ -218,8 +218,7 @@ def test_cancelado_nao_contamina_ativo(mock_balanco_df, isolated_cache_dirs, mon
     success, report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_bytes)
     assert success is True
     
-    # ✅ USAR _read_parquet_safe + isolated_cache_dirs["parquet"] + formato DD/MM/YYYY
-    df_result = _read_parquet_safe(str(isolated_cache_dirs["parquet"]))
+    df_result = _read_parquet_safe(str(parquet_path))
     jan_entry = df_result[(df_result["No. UC"].astype(float) == 42074274.0) & (df_result["Referencia"] == "01/01/2026")]
     assert not jan_entry.empty
     jan = jan_entry.iloc[0]
@@ -228,6 +227,7 @@ def test_cancelado_nao_contamina_ativo(mock_balanco_df, isolated_cache_dirs, mon
 
 def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, isolated_cache_dirs, monkeypatch):
     """UC existe na gestão mas apenas em outro período."""
+    parquet_path = isolated_cache_dirs["parquet"]
     import logic.services.sync_service as sync
     import io
     
@@ -252,8 +252,7 @@ def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, isolated_cache_
     success, report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_bytes)
     assert success is True
     
-    # ✅ USAR _read_parquet_safe + isolated_cache_dirs["parquet"] + formato DD/MM/YYYY
-    df_result = _read_parquet_safe(str(isolated_cache_dirs["parquet"]))
+    df_result = _read_parquet_safe(str(parquet_path))
     jan_entry = df_result[(df_result["No. UC"].astype(float) == 42074274.0) & (df_result["Referencia"] == "01/01/2026")]
     assert not jan_entry.empty
     jan = jan_entry.iloc[0]
