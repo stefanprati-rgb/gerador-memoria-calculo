@@ -83,6 +83,7 @@ CLIENT_COLUMN = "Razao Social"
 OPTIONAL_BASE_COLUMNS = [
     "Status Pos-Faturamento",
     "Vencimento",
+    CLASSIFICATION_COL,  # Coluna derivada — calculada pelo orchestrator, jamais presente no Excel fonte
 ]
 
 # Coluna usada para identificar períodos na interface
