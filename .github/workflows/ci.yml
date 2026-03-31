@@ -23,4 +23,17 @@ jobs:
         run: pip install -r requirements.txt pytest
       
       - name: Run tests
-        run: python -m pytest -v
+        run: |
+          echo "🔍 PYTHONPATH: $PYTHONPATH"
+          echo "📁 Workspace: ${{ github.workspace }}"
+          python -m pytest tests/test_sync_service.py \
+            -v \
+            --tb=long \
+            --log-cli-level=INFO \
+            -o log_cli=true \
+            --cov=logic.services.sync_service \
+            --cov-report=term-missing
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          BASE_SHEET_NAME: "Balanco Operacional"
+          SYNC_SERVICE_CACHE_DIR: "/tmp/test-cache"
