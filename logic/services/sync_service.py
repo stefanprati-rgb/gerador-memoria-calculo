@@ -13,7 +13,9 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = os.path.join("data", "cache")
+# --- Configuração de Cache Resiliente ---
+_CACHE_DIR_ENV = os.getenv("SYNC_SERVICE_CACHE_DIR")
+CACHE_DIR = _CACHE_DIR_ENV if _CACHE_DIR_ENV else os.path.join("data", "cache")
 PARQUET_FILE = os.path.join(CACHE_DIR, "base_consolidada.parquet")
 PENDENCIAS_FILE = os.path.join(CACHE_DIR, "pendencias.json")
 
@@ -246,6 +248,11 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             _original_len = len(df_consolidado)  # capture antes do merge
             df_consolidado = pd.merge(df_consolidado, df_gestao, on=merge_keys, how="left")
 
+            # 6. Guarda de Segurança: Expansão de linhas (duplicatas na Gestão)
+            # Se o merge gerar mais do que o dobro de linhas, abortamos por segurança contra sujeira massiva.
+            if len(df_consolidado) > 2 * _original_len and _original_len > 0:
+                raise ValueError(f"Merge abortado: expansão crítica de linhas detectada ({len(df_consolidado)} vs {_original_len})")
+
             # Validação pós-merge: Apenas informativa agora, pois 'Conta dupla' é uma possibilidade tratada
             n_sem_vencimento = df_consolidado["Vencimento"].isna().sum() if "Vencimento" in df_consolidado.columns else 0
             n_linhas_extras = len(df_consolidado) - _original_len
@@ -340,20 +347,47 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
         df_consolidado[col] = df_consolidado[col].astype(str).replace("nan", pd.NA)
 
     # 6. Salvar o Parquet consolidado
-    try:
-        df_consolidado.to_parquet(PARQUET_FILE, engine="fastparquet", index=False)
-        logger.info("Cache consolidado salvo com sucesso: %s (%d registros)", PARQUET_FILE, len(df_consolidado))
+    if _save_parquet_safe(df_consolidado, PARQUET_FILE):
         return True, report
-    except Exception as e:
-        logger.error("Erro ao salvar Parquet: %s", e)
+    else:
         return False, report
+
+
+def _save_parquet_safe(df: pd.DataFrame, filepath: str) -> bool:
+    """Salva DataFrame em Parquet tentando pyarrow primeiro, fallback para fastparquet."""
+    for engine in ["pyarrow", "fastparquet"]:
+        try:
+            df.to_parquet(filepath, engine=engine, index=False)
+            logger.info("Parquet salvo com engine='%s': %s", engine, filepath)
+            return True
+        except ImportError:
+            logger.debug("Engine '%s' não disponível, tentando próximo...", engine)
+            continue
+        except Exception as e:
+            logger.warning("Falha ao salvar com engine='%s': %s", engine, e)
+            continue
+    logger.error("Nenhuma engine de parquet disponível para salvar %s", filepath)
+    return False
+
+
+def _read_parquet_safe(filepath: str) -> pd.DataFrame:
+    """Lê Parquet tentando pyarrow primeiro, fallback para fastparquet."""
+    for engine in ["pyarrow", "fastparquet"]:
+        try:
+            return pd.read_parquet(filepath, engine=engine)
+        except ImportError:
+            continue
+        except Exception as e:
+            logger.warning("Falha ao ler com engine='%s': %s", engine, e)
+            continue
+    raise FileNotFoundError(f"Não foi possível ler {filepath} com nenhuma engine disponível (pyarrow/fastparquet)")
 
 
 def get_parquet_dataframe() -> pd.DataFrame:
     """Lê e retorna o DataFrame cacheado. Levanta FileNotFoundError se não existir."""
     if not os.path.exists(PARQUET_FILE):
         raise FileNotFoundError(f"Cache {PARQUET_FILE} não encontrado.")
-    return pd.read_parquet(PARQUET_FILE, engine="fastparquet")
+    return _read_parquet_safe(PARQUET_FILE)
 
 
 def get_cache_update_time() -> str:
