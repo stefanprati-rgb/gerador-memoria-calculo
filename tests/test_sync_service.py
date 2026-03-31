@@ -55,9 +55,6 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, mon
     monkeypatch.setattr(sync, "BALANCO_LOCAL", str(cache_dir / "Balanco_Energetico.xlsm"))
     monkeypatch.setattr(sync, "GESTAO_LOCAL", str(cache_dir / "gd_gestao.xlsx"))
     
-    # Para o teste não ler o disco, precisamos mockar as leituras do Pandas ou ExcelAdapter
-    # Primeiro salvamos os mocks no temp dir para ele poder ler normalmente!
-    
     # Criar um BaseExcelReader mockado que já retorna o mock_balanco_df
     class MockExcelReader:
         def __init__(self, *args, **kwargs):
@@ -73,7 +70,7 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, mon
     mock_gestao_df.to_excel(gestao_io, index=False, engine='openpyxl')
     gestao_bytes = gestao_io.getvalue()
     
-    # Executa a função passando os bytes (que serão salvos nos paths que mockamos e lidos depois)
+    # Executa a função passando os bytes
     success, report = sync.build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, firebase_client=None)
     
     assert success is True
@@ -84,10 +81,6 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, mon
     print("\n\n=== RESULTADO DO MERGE ===")
     print(df_result[["No. UC", "Referencia", "Vencimento", "Status Pos-Faturamento"]].to_string())
     print("==========================\n")
-    
-    # Converter a coluna para string YYYY-MM-DD para simplificar o teste, mas o pandas salva
-    # datas do fastparquet. A Referencia vem como string "01/01/2026" do nosso mock!
-    # O df_result["Referencia"] fica "01/01/2026".
     
     # Importante: O sync_service tenta converter colunas object para numerico, entao 'No. UC' vira float.
     df_result["No. UC"] = pd.to_numeric(df_result["No. UC"], errors="coerce")
@@ -102,9 +95,6 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, mon
     print("-------------------\n")
 
     # 1. UC 42074274.0 deve casar com o inteiro 42074274
-    # E o merge por perodo deve garantir:
-    #   Jan/2026 -> Vence 10-02-2026, Pago
-    #   Fev/2026 -> Vence 10-03-2026, Atrasado
     cliente_a_jan = df_result[(df_result["No. UC"] == 42074274.0) & (df_result["Referencia"] == "01/01/2026")].iloc[0]
     cliente_a_fev = df_result[mask_fev].iloc[0]
     
@@ -115,22 +105,21 @@ def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, mon
     assert cliente_a_fev["Status Pos-Faturamento"] == "Atrasado"
     
     # 2. Cliente B foi "Cancelado" na Gestão ("Sim"). 
-    # De acordo com a regra de negócio atual, faturas canceladas são REMOVIDAS da base consolidada.
     mask_b = df_result["No. UC"] == 5143128.0
     assert mask_b.sum() == 0, "Fatura cancelada deveria ter sido removida da base consolidada"
     
-    # 3. Cliente C tem Fev/2026 na base e usa uma string gigantesca. Deve casar perfeitamente.
+    # 3. Cliente C tem Fev/2026 na base e usa uma string gigantesca.
     cliente_c = df_result[(df_result["No. UC"] == 4000476449.0)].iloc[0]
     assert cliente_c["Vencimento"] == "20-03-2026"
     assert cliente_c["Status Pos-Faturamento"] == "Pago"
 
 
 @pytest.mark.xfail(
-    reason="Bug preexistente: o teste espera ValueError('Merge abortado') mas essa guarda nunca foi implementada no sync_service. Ação: implementar a proteção ou remover o teste.",
+    reason="Bug preexistente: o teste espera ValueError('Merge abortado') mas essa guarda nunca foi implementada no sync_service.",
     strict=False,
 )
 def test_sync_service_merge_row_expansion_limit(mock_balanco_df, tmp_path, monkeypatch):
-    """Verifica que o processo falha se o merge gerar expansão exagerada de linhas (duplicatas na gestão)."""
+    """Verifica que o processo falha se o merge gerar expansão exagerada de linhas."""
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     parquet_path = cache_dir / "base_consolidada.parquet"
@@ -147,20 +136,17 @@ def test_sync_service_merge_row_expansion_limit(mock_balanco_df, tmp_path, monke
             
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
     
-    # Criar gestão com duplicatas para uma mesma UC e Período (causará explosão de linhas no merge)
-    # mock_balanco_df tem 4 linhas. Se adicionarmos 1 registro duplicado, teremos 5 linhas (25% de expansão)
+    # Criar gestão com duplicatas
     gestao_duplicada_df = pd.DataFrame({
-        "Instalação": [42074274, 42074274, 42074274], # Duplicado para a mesma UC
-        "Mês de Referência": ["01-2026", "01-2026", "02-2026"], # Duas entradas para Jan-2026
+        "Instalação": [42074274, 42074274, 42074274],
+        "Mês de Referência": ["01-2026", "01-2026", "02-2026"],
         "Vencimento": ["10-02-2026", "11-02-2026", "10-03-2026"],
         "Status": ["Pago", "Pago", "Atrasado"]
     })
     
-    # Vamos forçar a falha da validação mockando o pd.merge no módulo sync para retornar um DF maior.
     original_pd_merge = pd.merge
     def mock_merge_expansive(*args, **kwargs):
         df_res = original_pd_merge(*args, **kwargs)
-        # Adicionar uma linha extra artificialmente para disparar a validação
         return pd.concat([df_res, df_res.iloc[[0]]], ignore_index=True)
 
     monkeypatch.setattr(sync.pd, "merge", mock_merge_expansive)
@@ -186,30 +172,22 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, tmp_path, monkeyp
     
     class MockExcelReader:
         def __init__(self, *args, **kwargs):
-            # No mock_balanco_df, Status Pos-Faturamento é "Em aberto" (texto puro)
-            # Vamos criar um cenário onde uma coluna protegida tem cara de número
             df = mock_balanco_df.copy()
-            df["Status Pos-Faturamento"] = ["1", "2", "3", "4"] # Parece numérico
+            df["Status Pos-Faturamento"] = ["1", "2", "3", "4"]
             self.df = df
             
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
     
-    # Executa sem gestão
     success, report = sync.build_consolidated_cache_from_uploads(b"fake", None)
     assert success is True
     
     df_result = pd.read_parquet(parquet_path, engine="fastparquet")
-    
-    # Status Pos-Faturamento deve ser object (string), não int/float
     assert df_result["Status Pos-Faturamento"].dtype == object or df_result["Status Pos-Faturamento"].dtype.name == 'string'
     assert isinstance(df_result["Status Pos-Faturamento"].iloc[0], str)
 
 
 def test_cancelado_nao_contamina_ativo(mock_balanco_df, tmp_path, monkeypatch):
-    """
-    Gestão com dois registros para a mesma UC+Período:
-    um cancelado e um ativo. O ativo deve vencer.
-    """
+    """Gestão com dois registros para a mesma UC+Período: um cancelado e um ativo."""
     import logic.services.sync_service as sync
     import io
     cache_dir = tmp_path / "cache"
@@ -245,16 +223,11 @@ def test_cancelado_nao_contamina_ativo(mock_balanco_df, tmp_path, monkeypatch):
     df_result = pd.read_parquet(parquet_path, engine="fastparquet")
     df_result["Referencia"] = pd.to_datetime(df_result["Referencia"]).dt.strftime('%Y-%m-%d')
     jan = df_result[(df_result["No. UC"].astype(float) == 42074274.0) & (df_result["Referencia"] == "2026-01-01")].iloc[0]
-    
-    # Deve ter o vencimento do registro NÃO cancelado
     assert jan["Vencimento"] == "20-02-2026"
 
 
 def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, tmp_path, monkeypatch):
-    """
-    UC existe na gestão mas apenas em outro período.
-    Não deve receber vencimento de período diferente.
-    """
+    """UC existe na gestão mas apenas em outro período."""
     import logic.services.sync_service as sync
     import io
     cache_dir = tmp_path / "cache"
@@ -273,7 +246,7 @@ def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, tmp_path, monke
 
     gestao_df = pd.DataFrame({
         "Instalação": [42074274],
-        "Mês de Referência": ["11-2025"],   # período diferente do Balanço (01-2026)
+        "Mês de Referência": ["11-2025"],
         "Vencimento": ["10-12-2025"],
         "Status": ["Pago"],
         "Cancelada": ["Não"],
@@ -290,12 +263,10 @@ def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, tmp_path, monke
     df_result = pd.read_parquet(parquet_path, engine="fastparquet")
     df_result["Referencia"] = pd.to_datetime(df_result["Referencia"]).dt.strftime('%Y-%m-%d')
     jan = df_result[(df_result["No. UC"].astype(float) == 42074274.0) & (df_result["Referencia"] == "2026-01-01")].iloc[0]
-    
-    # Não deve receber vencimento de outro período
     assert pd.isna(jan["Vencimento"])
 
 def test_pendencias_periodo_nao_lancado(mock_balanco_df, tmp_path, monkeypatch):
-    """UC existe na Gestão em outro período -> deve aparecer no relatório como PERIODO_NAO_LANCADO."""
+    """UC existe na Gestão em outro período."""
     import logic.services.sync_service as sync
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
@@ -316,7 +287,6 @@ def test_pendencias_periodo_nao_lancado(mock_balanco_df, tmp_path, monkeypatch):
             })
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
 
-    # Gestao tem a UC 123 mas no periodo 02/2026 (diferente de 01/2026)
     gestao_df = pd.DataFrame({
         "Instalação": [123],
         "Mês de Referência": ["02-2026"],
@@ -333,7 +303,7 @@ def test_pendencias_periodo_nao_lancado(mock_balanco_df, tmp_path, monkeypatch):
     assert report["pendencias"][0]["tipo"] == "PERIODO_NAO_LANCADO"
 
 def test_pendencias_uc_ausente(mock_balanco_df, tmp_path, monkeypatch):
-    """UC não existe na Gestão em nenhum período -> deve aparecer como UC_AUSENTE_NA_GESTAO."""
+    """UC não existe na Gestão em nenhum período."""
     import logic.services.sync_service as sync
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
@@ -354,7 +324,6 @@ def test_pendencias_uc_ausente(mock_balanco_df, tmp_path, monkeypatch):
             })
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
 
-    # Gestao tem apenas UC 123
     gestao_df = pd.DataFrame({
         "Instalação": [123],
         "Mês de Referência": ["01-2026"],
@@ -371,7 +340,7 @@ def test_pendencias_uc_ausente(mock_balanco_df, tmp_path, monkeypatch):
     assert report["pendencias"][0]["tipo"] == "UC_AUSENTE_NA_GESTAO"
 
 def test_pendencias_vazio_quando_todos_completos(mock_balanco_df, tmp_path, monkeypatch):
-    """Quando todas as UCs têm match -> total_ucs_sem_vencimento == 0 e pendencias == []."""
+    """Quando todas as UCs têm match."""
     import logic.services.sync_service as sync
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
