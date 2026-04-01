@@ -3,31 +3,39 @@ from typing import List
 import streamlit as st
 
 @dataclass
-class Group:
+class GroupState:
     """Modelo de dados tipado representando um grupo de exportação."""
     id: int
     name: str
     clients: List[str] = field(default_factory=list)
     periods: List[str] = field(default_factory=list)
+    group_by_distributor: bool = False
 
 def initialize_groups() -> None:
     """Inicializa o estado dos grupos na sessão do Streamlit, se não existir."""
     if 'groups' not in st.session_state:
-        st.session_state.groups = [Group(id=1, name="Grupo_1")]
+        st.session_state.groups = [GroupState(id=1, name="Grupo_1")]
     if 'group_counter' not in st.session_state:
         st.session_state.group_counter = 1
+    
+    # Adicionando group_state apontando para o grupo principal para facilitar o uso no Wizard
+    if 'group_state' not in st.session_state and st.session_state.groups:
+        st.session_state.group_state = st.session_state.groups[0]
 
 def add_group() -> None:
     """Adiciona um novo grupo e incrementa o contador."""
     st.session_state.group_counter += 1
     new_id = st.session_state.group_counter
     st.session_state.groups.append(
-        Group(id=new_id, name=f"Grupo_{new_id}")
+        GroupState(id=new_id, name=f"Grupo_{new_id}")
     )
 
 def remove_group(group_id: int) -> None:
     """Remove um grupo da sessão pelo seu ID."""
     st.session_state.groups = [g for g in st.session_state.groups if g.id != group_id]
+    # Se removeu o grupo que estava em group_state, reseta se possível
+    if st.session_state.groups:
+        st.session_state.group_state = st.session_state.groups[0]
 
 def update_group_name(group_id: int, new_name: str) -> None:
     """Atualiza o nome de um grupo específico."""

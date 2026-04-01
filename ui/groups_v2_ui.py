@@ -2,7 +2,7 @@ import time
 import streamlit as st
 from typing import List, Any
 from ui.state.group_state import (
-    Group, initialize_groups, add_group, remove_group, 
+    GroupState, initialize_groups, add_group, remove_group, 
     update_group_name, update_group_clients, clear_group_clients, 
     select_clients, update_group_periods
 )
@@ -27,7 +27,7 @@ def render_groups_section_v2(available_clients: List[str], available_periods: Li
 
 
 @st.fragment
-def render_group_card_v2(group: Group, index: int, available_clients: List[str], available_periods: List[str], orch: Any) -> None:
+def render_group_card_v2(group: GroupState, index: int, available_clients: List[str], available_periods: List[str], orch: Any) -> None:
     """Renderiza um Card limpo (sem expander) contendo o fluxo óbvio de preenchimento."""
     is_complete = bool(group.clients) and bool(group.periods)
     
@@ -118,7 +118,7 @@ def render_group_card_v2(group: Group, index: int, available_clients: List[str],
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-def _render_client_selector_v2(group: Group, available_clients: List[str]) -> None:
+def _render_client_selector_v2(group: GroupState, available_clients: List[str]) -> None:
     """Interface moderna de seleção estilo Cesta de Etiquetas (Tokens)."""
     
     # 1. Área de "Cesta" (O que já está selecionado)
@@ -186,7 +186,7 @@ def _render_client_selector_v2(group: Group, available_clients: List[str]) -> No
         st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _render_period_selector_v2(group: Group, available_periods: List[str]) -> None:
+def _render_period_selector_v2(group: GroupState, available_periods: List[str]) -> None:
     """Substitui o st.multiselect por st.pills (botões amigáveis)."""
     # Mapeia os períodos reais para lables bonitos para o usuário
     options = available_periods
@@ -222,7 +222,7 @@ def _render_period_selector_v2(group: Group, available_periods: List[str]) -> No
             update_group_periods(group.id, new_periods)
             st.rerun()  # Forçar re-render para atualizar o botão de gerar
 
-def _render_record_preview_v2(group: Group, orch: Any) -> None:
+def _render_record_preview_v2(group: GroupState, orch: Any) -> None:
     """Um resumo minimalista de "pronto para gerar?"."""
     if group.clients and group.periods:
         count = orch.count_filtered(group.clients, group.periods)
@@ -291,7 +291,7 @@ def render_generation_button_v2(orch: Any) -> None:
             _generate_multiple_v2(valid_groups, orch, start_time, incomplete_filter)
 
 
-def _generate_single_v2(group: Group, orch: Any, start_time: float, incomplete_filter: str = "all") -> None:
+def _generate_single_v2(group: GroupState, orch: Any, start_time: float, incomplete_filter: str = "all") -> None:
     with st.spinner("Processando... Quase pronto!"):
         excel_data = orch.generate(group.clients, group.periods, incomplete_filter=incomplete_filter)
     
@@ -312,7 +312,7 @@ def _generate_single_v2(group: Group, orch: Any, start_time: float, incomplete_f
         st.warning("Nenhum dado encontrado para gerar a planilha com os filtros aplicados.")
 
 
-def _generate_multiple_v2(valid_groups: List[Group], orch: Any, start_time: float, incomplete_filter: str = "all") -> None:
+def _generate_multiple_v2(valid_groups: List[GroupState], orch: Any, start_time: float, incomplete_filter: str = "all") -> None:
     with st.spinner(f"Processando múltiplos arquivos..."):
         groups_payload = [
             {"name": sanitize_filename(g.name), "clients": g.clients, "periods": g.periods}

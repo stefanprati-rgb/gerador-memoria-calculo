@@ -2,7 +2,7 @@ import time
 import streamlit as st
 from typing import List, Any
 from ui.state.group_state import (
-    Group, initialize_groups, add_group, remove_group, 
+    GroupState, initialize_groups, add_group, remove_group, 
     update_group_name, update_group_clients, clear_group_clients, 
     select_clients, update_group_periods
 )
@@ -25,7 +25,7 @@ def render_groups_section(available_clients: List[str], available_periods: List[
 
 
 @st.fragment
-def render_group_card(group: Group, index: int, available_clients: List[str], available_periods: List[str], orch: Any) -> None:
+def render_group_card(group: GroupState, index: int, available_clients: List[str], available_periods: List[str], orch: Any) -> None:
     """Renderiza fragmento individual de um grupo com subcomponentes."""
     is_complete = bool(group.clients) and bool(group.periods)
 
@@ -36,7 +36,7 @@ def render_group_card(group: Group, index: int, available_clients: List[str], av
         _render_record_preview(group, orch)
 
 
-def _render_group_header(group: Group) -> None:
+def _render_group_header(group: GroupState) -> None:
     """Sub-função de renderização da edição de nome e botões de cabeçalho."""
     col_name, col_btn = st.columns([0.9, 0.1])
     
@@ -58,7 +58,7 @@ def _render_group_header(group: Group) -> None:
                 st.rerun()
 
 
-def _render_client_selector(group: Group, available_clients: List[str]) -> None:
+def _render_client_selector(group: GroupState, available_clients: List[str]) -> None:
     """Centraliza a lógica de seleção de clientes baseada com checkboxes."""
     total = len(available_clients)
     selected = len(group.clients)
@@ -84,7 +84,7 @@ def _render_client_selector(group: Group, available_clients: List[str]) -> None:
         _do_render_checkboxes(group, available_clients[:50])
 
 
-def _render_client_bulk_actions(group: Group, filtered_clients: List[str] | None) -> None:
+def _render_client_bulk_actions(group: GroupState, filtered_clients: List[str] | None) -> None:
     """Rendere botões de selecionar lote ou limpar."""
     col_sel_all, col_clear = st.columns([1, 1])
     
@@ -106,7 +106,7 @@ def _render_client_bulk_actions(group: Group, filtered_clients: List[str] | None
                 st.rerun()
 
 
-def _do_render_checkboxes(group: Group, list_to_render: List[str]) -> None:
+def _do_render_checkboxes(group: GroupState, list_to_render: List[str]) -> None:
     """Implementa as interações de checkbox em loop dentro de scroll container."""
     if not list_to_render:
         st.info("Nenhum cliente encontrado com este termo.")
@@ -124,7 +124,7 @@ def _do_render_checkboxes(group: Group, list_to_render: List[str]) -> None:
                 update_group_clients(group.id, client, checked_state)
 
 
-def _render_period_selector(group: Group, available_periods: List[str]) -> None:
+def _render_period_selector(group: GroupState, available_periods: List[str]) -> None:
     """Renderiza interface de seleção de períodos por multiselect nativo em Streamlit."""
     st.markdown("**Períodos de Referência**")
     
@@ -153,7 +153,7 @@ def _render_period_selector(group: Group, available_periods: List[str]) -> None:
         update_group_periods(group.id, new_periods)
 
 
-def _render_record_preview(group: Group, orch: Any) -> None:
+def _render_record_preview(group: GroupState, orch: Any) -> None:
     """Valida via contagem do ORCH se existem items para render preview em tela."""
     if group.clients and group.periods:
         count = orch.count_filtered(group.clients, group.periods)
@@ -216,7 +216,7 @@ def render_generation_button(orch: Any) -> None:
             _generate_multiple(valid_groups, orch, start_time)
 
 
-def _generate_single(group: Group, orch: Any, start_time: float) -> None:
+def _generate_single(group: GroupState, orch: Any, start_time: float) -> None:
     """Extrai Excel individual utilizando object group na memoria."""
     with st.spinner("Processando planilha..."):
         excel_data = orch.generate(group.clients, group.periods)
@@ -238,7 +238,7 @@ def _generate_single(group: Group, orch: Any, start_time: float) -> None:
         st.warning("Nenhum dado encontrado para gerar a planilha com os filtros aplicados.")
 
 
-def _generate_multiple(valid_groups: List[Group], orch: Any, start_time: float) -> None:
+def _generate_multiple(valid_groups: List[GroupState], orch: Any, start_time: float) -> None:
     """Gera múltiplos Excels encadeados via batch process ZIP."""
     with st.spinner(f"Gerando {len(valid_groups)} planilhas em lote..."):
         groups_payload = [
