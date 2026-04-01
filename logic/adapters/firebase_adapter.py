@@ -23,29 +23,45 @@ class FirebaseAdapter:
         self._db = self._get_db()
 
     def _initialize_app(self):
-        """Inicializa o app do Firebase se ainda não foi inicializado."""
+        """
+        Inicializa o app do Firebase se ainda não foi inicializado.
+        Prioriza st.secrets (Streamlit Cloud) com fallback para arquivo local.
+        """
+        # --- Cópia de Segurança do Método Original (Backup) ---
+        # def _original_initialize_app(self):
+        #     if not firebase_admin._apps:
+        #         abs_path = os.path.abspath(self.credentials_path)
+        #         if not os.path.exists(abs_path): return None
+        #         cred = credentials.Certificate(abs_path)
+        #         return firebase_admin.initialize_app(cred, {'storageBucket': self.bucket_name})
+        # ------------------------------------------------------
+
         try:
             if not firebase_admin._apps:
-                # Resolve o caminho absoluto para o log ser mais útil
-                abs_path = os.path.abspath(self.credentials_path)
-                logger.info("DEBUG | Tentando inicializar Firebase com credenciais em: %s", abs_path)
-
-                if not os.path.exists(abs_path):
-                    logger.error("ERRO CRÍTICO: Arquivo de credenciais NÃO ENCONTRADO no caminho esperado: %s", abs_path)
-                    
-                    # Procura na raiz do projeto por qualquer ficheiro .json que contenha 'firebase' no nome
-                    # Isso ajuda o usuário a identificar se o nome no .env está errado
-                    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                    json_files = [f for f in os.listdir(root_dir) if f.endswith('.json') and 'firebase' in f.lower()]
-                    
-                    if json_files:
-                        logger.warning("SUGESTÃO | Encontramos os seguintes arquivos JSON com 'firebase' na raiz: %s. Verifique se um deles é o correto no seu arquivo .env.", json_files)
-                    else:
-                        logger.error("ERRO ADICIONAL | Nenhum arquivo JSON contendo 'firebase' foi encontrado na raiz do projeto (%s).", root_dir)
-                    
-                    return None
+                import streamlit as st
                 
-                cred = credentials.Certificate(abs_path)
+                # 1. Prioridade: Streamlit Secrets (Nuvem)
+                if "firebase_credentials" in st.secrets:
+                    logger.info("Firebase | Inicializando via st.secrets (Streamlit Cloud)")
+                    cred_dict = dict(st.secrets["firebase_credentials"])
+                    cred = credentials.Certificate(cred_dict)
+                
+                # 2. Fallback: Arquivo Local (Desenvolvimento)
+                else:
+                    abs_path = os.path.abspath(self.credentials_path)
+                    logger.info("Firebase | Tentando inicializar via arquivo local: %s", abs_path)
+
+                    if not os.path.exists(abs_path):
+                        logger.error("ERRO CRÍTICO: Credenciais não encontradas em st.secrets nem no arquivo: %s", abs_path)
+                        # Sugestão de correção (apenas para local)
+                        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        json_files = [f for f in os.listdir(root_dir) if f.endswith('.json') and 'firebase' in f.lower()]
+                        if json_files:
+                            logger.warning("SUGESTÃO | Encontramos estes JSONs na raiz: %s", json_files)
+                        return None
+                    
+                    cred = credentials.Certificate(abs_path)
+                
                 app = firebase_admin.initialize_app(cred, {
                     'storageBucket': self.bucket_name
                 })

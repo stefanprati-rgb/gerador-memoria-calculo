@@ -37,7 +37,7 @@ def render_client_config(orchestrator):
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True) # Espaçamento
-        if st.button("🚀 Carregar Perfil", use_container_width=True, type="primary"):
+        if st.button("🚀 Carregar Perfil", width='stretch', type="primary"):
             if active_profile:
                 st.session_state.active_profile = active_profile
                 st.session_state.mapping_df = enrichment_service.load_mapping(active_profile)
@@ -79,7 +79,7 @@ def render_client_config(orchestrator):
             st.info(f"Encontradas {len(filtered_ucs)} UCs para o termo '{search_term}'.")
             with col_add:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("📥 Importar UCs", use_container_width=True):
+                if st.button("📥 Importar UCs", width='stretch'):
                     # Unir evitando duplicatas
                     new_entries = filtered_ucs[~filtered_ucs[ENRICHMENT_KEY].isin(current_mapping[ENRICHMENT_KEY])]
                     if not new_entries.empty:
@@ -109,7 +109,7 @@ def render_client_config(orchestrator):
             data=csv_data,
             file_name=f"Enriquecimento_{active_profile}.csv",
             mime="text/csv",
-            use_container_width=True,
+            width='stretch',
             help="Baixa CSV com as UCs atuais. Preencha no Excel e suba ao lado."
         )
         
@@ -179,7 +179,7 @@ def render_client_config(orchestrator):
         new_col_name = st.text_input("Adicionar nova coluna (Ex: Centro de Custo, Unidade)", key="new_col_input")
     with col_btn_col:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("➕ Adicionar Coluna", use_container_width=True):
+        if st.button("➕ Adicionar Coluna", width='stretch'):
             if new_col_name and new_col_name not in current_mapping.columns:
                 current_mapping[new_col_name] = pd.NA
                 st.session_state.mapping_df = current_mapping
@@ -192,7 +192,7 @@ def render_client_config(orchestrator):
     edited_df = st.data_editor(
         current_mapping,
         num_rows="dynamic",
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         column_config={
             ENRICHMENT_KEY: st.column_config.TextColumn("No. UC (Identificador)", disabled=True),
@@ -206,7 +206,7 @@ def render_client_config(orchestrator):
     col_save, col_del_area = st.columns([0.7, 0.3])
     
     with col_save:
-        if st.button("💾 Salvar Configuração de Enriquecimento", type="primary", use_container_width=True):
+        if st.button("💾 Salvar Configuração de Enriquecimento", type="primary", width='stretch'):
             if enrichment_service.save_mapping(active_profile, edited_df):
                 st.session_state.mapping_df = edited_df
                 st.success(f"✅ Configuração do perfil '{active_profile}' salva com sucesso!")
@@ -217,7 +217,7 @@ def render_client_config(orchestrator):
         with st.expander("🗑️ Excluir Perfil", expanded=False):
             st.warning(f"Isso apagará o perfil '{active_profile}' da Nuvem e do Local.")
             confirm = st.checkbox("Confirmo a exclusão", key=f"del_confirm_{active_profile}")
-            if st.button("🔴 Excluir Definitivamente", disabled=not confirm, use_container_width=True):
+            if st.button("🔴 Excluir Definitivamente", disabled=not confirm, width='stretch'):
                 if enrichment_service.delete_profile(active_profile):
                     st.success(f"Perfil '{active_profile}' removido com sucesso.")
                     # Limpar o estado para forçar o recarregamento

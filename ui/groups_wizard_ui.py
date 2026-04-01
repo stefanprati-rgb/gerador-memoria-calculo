@@ -68,7 +68,7 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
         with col_lbl:
              st.markdown("<p style='font-size: 0.85rem; margin-bottom: 0;'><b>Na Planilha:</b></p>", unsafe_allow_html=True)
         with col_clr:
-             if st.button("🧹 Limpar Tudo", key=f"wiz_btn_clear_{group.id}", use_container_width=True):
+             if st.button("🧹 Limpar Tudo", key=f"wiz_btn_clear_{group.id}", width='stretch'):
                   clear_group_clients(group.id)
                   st.rerun()
 
@@ -116,7 +116,7 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                   
         st.markdown("<div style='max-height: 180px; overflow-y: auto;'>", unsafe_allow_html=True)
         for client in unselected_clients:
-             if st.button(f"+ {client}", key=f"wiz_add_btn_{group.id}_{safe_key(client)}", use_container_width=True):
+             if st.button(f"+ {client}", key=f"wiz_add_btn_{group.id}_{safe_key(client)}", width='stretch'):
                  update_group_clients(group.id, client, True)
                  st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -125,7 +125,7 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
     st.divider()
     _, col_next = st.columns([0.7, 0.3])
     with col_next:
-        if st.button("Próximo ➔", type="primary", use_container_width=True, disabled=len(group.clients) == 0):
+        if st.button("Próximo ➔", type="primary", width='stretch', disabled=len(group.clients) == 0):
             st.session_state.wizard_step = 2
             st.rerun()
 
@@ -198,11 +198,11 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
     st.divider()
     col_back, _, col_next = st.columns([0.3, 0.4, 0.3])
     with col_back:
-        if st.button("⬅️ Voltar", use_container_width=True):
+        if st.button("⬅️ Voltar", width='stretch'):
             st.session_state.wizard_step = 1
             st.rerun()
     with col_next:
-        if st.button("Revisar ➔", type="primary", use_container_width=True, disabled=len(group.periods) == 0):
+        if st.button("Revisar ➔", type="primary", width='stretch', disabled=len(group.periods) == 0):
             st.session_state.wizard_step = 3
             st.rerun()
 
@@ -229,7 +229,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         st.warning(f"⚠ **{incomplete_count}** faturas sem vencimento detectadas ({complete_count} completas).")
         
         with st.expander("Ver detalhes das ausências"):
-            st.dataframe(incomplete_info["ucs_afetadas"], use_container_width=True)
+            st.dataframe(incomplete_info["ucs_afetadas"], width='stretch')
         
         # Opções de geração
         st.markdown("<p style='font-weight: 600; margin-bottom: 5px;'>Como deseja gerar?</p>", unsafe_allow_html=True)
@@ -266,7 +266,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
               st.success(f"✅ Enriquecimento aplicado usando o perfil: **{selected_enrichment}**")
 
     # Botão de geração
-    if st.button("🪄 Gerar Planilha Agora", type="primary", use_container_width=True):
+    if st.button("🪄 Gerar Planilha Agora", type="primary", width='stretch'):
         start_time = time.time()
         with st.spinner("Construindo planilha..."):
             excel_data = orch.generate(
@@ -286,7 +286,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 data=excel_data,
                 file_name=filename,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
+                width='stretch',
                 type="primary"
             )
         else:
@@ -295,11 +295,11 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
     st.divider()
     col_back, _, col_restart = st.columns([0.3, 0.4, 0.3])
     with col_back:
-        if st.button("⬅️ Voltar", use_container_width=True):
+        if st.button("⬅️ Voltar", width='stretch'):
             st.session_state.wizard_step = 2
             st.rerun()
     with col_restart:
-        if st.button("Limpar e Iniciar Novo", use_container_width=True):
+        if st.button("Limpar e Iniciar Novo", width='stretch'):
             clear_group_clients(group.id)
             update_group_periods(group.id, [])
             st.session_state.wizard_step = 1
