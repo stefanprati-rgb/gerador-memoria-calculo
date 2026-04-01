@@ -20,7 +20,6 @@ from logic.core.mapping import (
     CLASSIFICATION_LABEL_FATURA,
     CLASSIFICATION_LABEL_REGRA,
     CLASSIFICATION_COL,
-    ENRICHMENT_KEY,
 )
 import pandas as pd
 from typing import Any, List, Optional, Dict
@@ -70,7 +69,7 @@ class Orchestrator:
         ucs_afetadas = []
         for _, row in incomplete_df.iterrows():
             ucs_afetadas.append({
-                "no_uc": str(row[ENRICHMENT_KEY]),
+                "no_uc": str(row["No. UC"]),
                 "referencia": str(row["Referencia"]),
                 "razao_social": str(row["Razao Social"])
             })
@@ -107,21 +106,13 @@ class Orchestrator:
         grouped_dfs = []
         parent_count = 0
         
-        # Determinar a base das chaves de agrupamento
-        if group_by_distributor:
-            # Para agrupamento por Distribuidora, ignoramos o nome do cliente (CLIENT_COLUMN)
-            # para evitar que variações de nome na base separem o grupo.
-            logger.info("Agrupamento por Distribuidora ativado: base ['Referencia', 'Distribuidora'].")
-            keys = ["Referencia", "Distribuidora"] if "Distribuidora" in df.columns else ["Referencia", CLIENT_COLUMN]
-            if "Distribuidora" not in df.columns:
-                 logger.warning("Agrupamento por Distribuidora solicitado mas coluna não encontrada. Usando CLIENT_COLUMN.")
-        else:
-            # Comportamento padrão: Agrupar considerando Referência e Razão Social
-            keys = ["Referencia", CLIENT_COLUMN]
+        # Agrupar por Cliente, Período e Hierarquia (UC p Rateio)
+        # O UC p Rateio é a chave definitiva que diz quais UCs moram juntas numa fatura.
+        keys = ["Referencia", CLIENT_COLUMN]
         
         # Sanitização rigorosa de tipos para chaves de identificação (UCs e IBM)
         # Excel costuma carregar números como float (1.0), o que quebra o de-para com strings ("1")
-        for col in [ENRICHMENT_KEY, HIERARCHY_KEY_COL, GROUPING_IBM_COL]:
+        for col in ["No. UC", HIERARCHY_KEY_COL, GROUPING_IBM_COL]:
             if col in df.columns:
                 df[col] = (
                     df[col]
@@ -131,22 +122,28 @@ class Orchestrator:
                     .replace(["nan", "None", ""], pd.NA)  # Voltar pd.NA real após converter para str
                 )
 
-        # Determinar chaves adicionais de hierarquia (IBM -> Hierarchy -> No. UC)
-        # Aplicamos a lógica de identificação de subgrupos / hierarquias com base no que estiver disponível.
-        if GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
+        # Determinar a chave de agrupamento principal (Prioridade: Regra Embracon -> IBM -> Hierarchy -> No. UC)
+        if group_by_distributor:
+            # Agrupamento estrito por Referencia + Cliente + Distribuidora
+            logger.info("Agrupamento estrito por Distribuidora ativado.")
+            if "Distribuidora" in df.columns:
+                keys.append("Distribuidora")
+            else:
+                logger.warning("Agrupamento por Distribuidora solicitado mas coluna não encontrada.")
+        elif GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
             # Grande cliente Raízen: usar IBM como chave de agrupamento
             # Preencher com No. UC apenas se IBM for nulo para garantir que não dropamos nada
-            df["group_key"] = df[GROUPING_IBM_COL].fillna(df[HIERARCHY_KEY_COL].fillna(df[ENRICHMENT_KEY]))
+            df["group_key"] = df[GROUPING_IBM_COL].fillna(df[HIERARCHY_KEY_COL].fillna(df["No. UC"]))
             keys.append("group_key")
         elif HIERARCHY_KEY_COL in df.columns:
             # Cliente com hierarquia tradicional
-            df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df[ENRICHMENT_KEY])
+            df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df["No. UC"])
             keys.append(HIERARCHY_KEY_COL)
-        elif not group_by_distributor:
-            # Se não há hierarquia e NÃO é Regra Embracon, forçamos individualidade (No. UC)
-            # para evitar fundir faturas comuns do mesmo cliente indevidamente.
-            logger.info("Sem hierarquia ou Agrupamento forçado: mantendo UCs individuais (chave '%s').", ENRICHMENT_KEY)
-            keys.append(ENRICHMENT_KEY)
+        else:
+            # Novo Comportamento: Se não há hierarquia nem agrupamento forçado, NÃO agrupar (usar No. UC)
+            # Isso evita que faturas de um mesmo CNPJ/Distribuidora sejam fundidas acidentalmente.
+            logger.info("Sem hierarquia ou Agrupamento forçado: mantendo UCs individuais (chave 'No. UC').")
+            keys.append("No. UC")
         
         # Preencher NA nas chaves temporariamente para o groupby não dropar
         for k in keys:
@@ -170,7 +167,7 @@ class Orchestrator:
                 parent_row = group_df.iloc[0].copy()
                 
                 # Modificar identificação
-                parent_row[ENRICHMENT_KEY] = "Fatura Agrupada"
+                parent_row["No. UC"] = "Fatura Agrupada"
                 parent_row[PARENT_ROW_FLAG] = True
                 
                 # Somar as colunas financeiras (min_count=1 garante que se tudo for NaN, fica NaN)
@@ -264,26 +261,17 @@ class Orchestrator:
         )
         return df
 
-    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None) -> Optional[bytes]:
+    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False) -> Optional[bytes]:
         """
         Filtra a base, aplica agrupamento e gera o arquivo Excel com os dados mapeados.
         
         Args:
             incomplete_filter: 'all' (tudo), 'complete_only' (sem incompletos), 'incomplete_only' (só incompletos).
             group_by_distributor: Se True, aplica a regra de agrupamento por Distribuidora.
-            enrichment_df: DataFrame extra para enriquecer os dados base via merge por 'No. UC'.
         """
-        logger.info("Gerando planilha para %d clientes, %d períodos. Filtro: %s | Agrupar por Distribuidora: %s | Enriquecimento: %s", 
-                    len(selected_clients), len(selected_periods), incomplete_filter, group_by_distributor, enrichment_df is not None)
+        logger.info("Gerando planilha para %d clientes, %d períodos. Filtro: %s | Agrupar por Distribuidora: %s", len(selected_clients), len(selected_periods), incomplete_filter, group_by_distributor)
 
         filtered_df = self.reader.filter_data(selected_clients, selected_periods)
-
-        if enrichment_df is not None and not enrichment_df.empty:
-            # Segurança: Evitar que UCs duplicadas no mapeamento multipliquem as linhas na planilha final
-            clean_enrichment = enrichment_df.drop_duplicates(subset=[ENRICHMENT_KEY], keep='last')
-            logger.info("Aplicando enriquecimento (left merge) em %d registros.", len(filtered_df))
-            filtered_df = pd.merge(filtered_df, clean_enrichment, on=ENRICHMENT_KEY, how='left')
-            logger.info("Enriquecimento de dados aplicado (%d novas colunas).", len(enrichment_df.columns) - 1)
 
         if filtered_df.empty:
             logger.warning("Nenhum dado encontrado após aplicar os filtros.")
@@ -313,22 +301,16 @@ class Orchestrator:
             if col not in processed_df.columns:
                 processed_df[col] = pd.NA
         
-        # 2. Identificar colunas extras vindas do enrichment_df (que não estão no mapping original)
-        extra_cols = [c for c in processed_df.columns if c not in legacy_keys and c != PARENT_ROW_FLAG]
+        # 2. Reordenar e restringir estritamente para as 15 colunas do mapping + flag interna
+        # Isso garante que nenhuma coluna de enriquecimento ou controle vaze para o Excel final
+        legacy_columns = list(COLUMN_MAPPING.keys())
+        processed_df = processed_df.reindex(columns=legacy_columns + [PARENT_ROW_FLAG])
         
-        # 3. Reordenar e incluir colunas extras no final do DataFrame
-        final_columns = legacy_keys + extra_cols
-        processed_df = processed_df.reindex(columns=final_columns + [PARENT_ROW_FLAG])
-        
-        # 4. Construir o mapping completo (Orderly) preservando a ordem do Excel
+        # 3. O Mapping deve seguir EXATAMENTE a ordem de chaves do COLUMN_MAPPING (14 colunas)
         from collections import OrderedDict
         full_mapping = OrderedDict()
-        for k in legacy_keys:
+        for k in legacy_columns:
             full_mapping[k] = COLUMN_MAPPING[k]
-        
-        # Estender com as colunas novas do enriquecimento
-        for k in extra_cols:
-            full_mapping[k] = k
 
         writer = TemplateExcelWriter(self.template_file)
         excel_bytes = writer.generate_bytes(processed_df, full_mapping)
@@ -336,10 +318,11 @@ class Orchestrator:
         logger.info("Planilha gerada com sucesso (%d bytes).", len(excel_bytes))
         return excel_bytes
 
-    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None) -> Optional[bytes]:
+    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False) -> Optional[bytes]:
         """
         Recebe uma lista de dicionários com chaves 'name', 'clients' (List[str]), e 'periods' (List[str]).
-        Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados com suporte a enriquecimento.
+        Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados.
+        Retorna None se nenhum arquivo puder ser gerado.
         """
         import zipfile
         import io
@@ -359,13 +342,7 @@ class Orchestrator:
                     logger.warning("Grupo '%s' ignorado: sem clientes ou períodos.", group_name)
                     continue
 
-                excel_bytes = self.generate(
-                    clients, 
-                    periods, 
-                    incomplete_filter=incomplete_filter, 
-                    group_by_distributor=group_by_distributor,
-                    enrichment_df=enrichment_df
-                )
+                excel_bytes = self.generate(clients, periods, incomplete_filter=incomplete_filter, group_by_distributor=group_by_distributor)
                 if excel_bytes:
                     filename = group_name if group_name.endswith(".xlsx") else f"{group_name}.xlsx"
                     zip_file.writestr(filename, excel_bytes)
@@ -377,24 +354,3 @@ class Orchestrator:
 
         logger.info("Lote finalizado: %d arquivos gerados.", generated_count)
         return zip_buffer.getvalue()
-
-    def get_all_ucs_with_names(self) -> pd.DataFrame:
-        """
-        Retorna todas as UCs únicas e suas respectivas Razões Sociais da base carregada.
-        Usado para configuração de enriquecimento de dados.
-        """
-        if self.reader.df.empty:
-            return pd.DataFrame(columns=[ENRICHMENT_KEY, CLIENT_COLUMN])
-            
-        # Pegar apenas as colunas necessárias e remover duplicatas
-        cols = [ENRICHMENT_KEY, CLIENT_COLUMN]
-        for col in cols:
-             if col not in self.reader.df.columns:
-                  logger.warning("get_all_ucs_with_names: Coluna '%s' não encontrada.", col)
-                  return pd.DataFrame(columns=cols)
-                  
-        return (
-            self.reader.df[cols]
-            .drop_duplicates()
-            .sort_values(by=CLIENT_COLUMN)
-        )
