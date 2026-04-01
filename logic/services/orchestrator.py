@@ -106,9 +106,17 @@ class Orchestrator:
         grouped_dfs = []
         parent_count = 0
         
-        # Agrupar por Cliente, Período e Hierarquia (UC p Rateio)
-        # O UC p Rateio é a chave definitiva que diz quais UCs moram juntas numa fatura.
-        keys = ["Referencia", CLIENT_COLUMN]
+        # Determinar a base das chaves de agrupamento
+        if group_by_distributor:
+            # Para agrupamento por Distribuidora, ignoramos o nome do cliente (CLIENT_COLUMN)
+            # para evitar que variações de nome na base separem o grupo.
+            logger.info("Agrupamento por Distribuidora ativado: base ['Referencia', 'Distribuidora'].")
+            keys = ["Referencia", "Distribuidora"] if "Distribuidora" in df.columns else ["Referencia", CLIENT_COLUMN]
+            if "Distribuidora" not in df.columns:
+                 logger.warning("Agrupamento por Distribuidora solicitado mas coluna não encontrada. Usando CLIENT_COLUMN.")
+        else:
+            # Comportamento padrão: Agrupar considerando Referência e Razão Social
+            keys = ["Referencia", CLIENT_COLUMN]
         
         # Sanitização rigorosa de tipos para chaves de identificação (UCs e IBM)
         # Excel costuma carregar números como float (1.0), o que quebra o de-para com strings ("1")
@@ -122,15 +130,9 @@ class Orchestrator:
                     .replace(["nan", "None", ""], pd.NA)  # Voltar pd.NA real após converter para str
                 )
 
-        # Determinar a chave de agrupamento principal (Prioridade: Regra Embracon -> IBM -> Hierarchy -> No. UC)
-        if group_by_distributor:
-            # Agrupamento estrito por Referencia + Cliente + Distribuidora
-            logger.info("Agrupamento estrito por Distribuidora ativado.")
-            if "Distribuidora" in df.columns:
-                keys.append("Distribuidora")
-            else:
-                logger.warning("Agrupamento por Distribuidora solicitado mas coluna não encontrada.")
-        elif GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
+        # Determinar chaves adicionais de hierarquia (IBM -> Hierarchy -> No. UC)
+        # Aplicamos a lógica de identificação de subgrupos / hierarquias com base no que estiver disponível.
+        if GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
             # Grande cliente Raízen: usar IBM como chave de agrupamento
             # Preencher com No. UC apenas se IBM for nulo para garantir que não dropamos nada
             df["group_key"] = df[GROUPING_IBM_COL].fillna(df[HIERARCHY_KEY_COL].fillna(df["No. UC"]))
@@ -139,9 +141,9 @@ class Orchestrator:
             # Cliente com hierarquia tradicional
             df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df["No. UC"])
             keys.append(HIERARCHY_KEY_COL)
-        else:
-            # Novo Comportamento: Se não há hierarquia nem agrupamento forçado, NÃO agrupar (usar No. UC)
-            # Isso evita que faturas de um mesmo CNPJ/Distribuidora sejam fundidas acidentalmente.
+        elif not group_by_distributor:
+            # Se não há hierarquia e NÃO é Regra Embracon, forçamos individualidade (No. UC)
+            # para evitar fundir faturas comuns do mesmo cliente indevidamente.
             logger.info("Sem hierarquia ou Agrupamento forçado: mantendo UCs individuais (chave 'No. UC').")
             keys.append("No. UC")
         
