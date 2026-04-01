@@ -44,7 +44,8 @@ def save_mapping(profile_name: str, df: pd.DataFrame) -> bool:
             return False
             
         adapter = _get_adapter()
-        if not adapter or not adapter._db:
+        db = adapter._get_db()
+        if not adapter or not db:
             logger.error("Firestore não disponível para salvar mapping.")
             return False
             
@@ -75,8 +76,9 @@ def load_mapping(profile_name: str) -> Optional[pd.DataFrame]:
     
     # 1. Tentar carregar do Firestore
     try:
-        if adapter and adapter._db:
-            doc_ref = adapter._db.collection(COLLECTION_NAME).document(profile_name)
+        db = adapter._get_db()
+        if adapter and db:
+            doc_ref = db.collection(COLLECTION_NAME).document(profile_name)
             doc = doc_ref.get()
             if doc.exists:
                 return _dict_to_df(doc.to_dict())
@@ -112,8 +114,9 @@ def list_profiles() -> List[str]:
     # 1. Buscar do Firestore
     try:
         adapter = _get_adapter()
-        if adapter and adapter._db:
-            docs = adapter._db.collection(COLLECTION_NAME).list_documents()
+        db = adapter._get_db()
+        if adapter and db:
+            docs = db.collection(COLLECTION_NAME).list_documents()
             for doc in docs:
                 profiles.add(doc.id)
     except Exception as e:
@@ -137,8 +140,9 @@ def delete_profile(profile_name: str) -> bool:
     try:
         # 1. Excluir do Firestore
         adapter = _get_adapter()
-        if adapter and adapter._db:
-             doc_ref = adapter._db.collection(COLLECTION_NAME).document(profile_name)
+        db = adapter._get_db()
+        if adapter and db:
+             doc_ref = db.collection(COLLECTION_NAME).document(profile_name)
              if doc_ref.get().exists:
                   doc_ref.delete()
                   logger.info("Perfil '%s' excluído do Firestore.", profile_name)

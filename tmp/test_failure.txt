@@ -1,0 +1,76 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.2, pluggy-1.6.0 -- C:\Projetos\memoria_de_calculo\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projetos\memoria_de_calculo
+plugins: anyio-4.13.0, cov-7.1.0, mock-3.15.1
+collecting ... collected 1 item
+
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit FAILED [100%]
+
+================================== FAILURES ===================================
+_________________ test_sync_service_merge_row_expansion_limit _________________
+
+mock_balanco_df =    Referencia        No. UC  ... Desconto Contratado Status Pos-Faturamento
+0  01/01/2026    42074274.0  ...          ...            Em aberto
+3  01/02/2026  4000476449.0  ...                  10              Em aberto
+
+[4 rows x 8 columns]
+isolated_cache_dirs = {'balanco_local': WindowsPath('C:/Users/Stefan_Pratti/AppData/Local/Temp/pytest-of-Stefan_Pratti/pytest-34/test_sync_s...ata/Local/Temp/pytest-of-Stefan_Pratti/pytest-34/test_sync_service_merge_row_ex0/cache/base_consolidada.parquet'), ...}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001DC2FB02780>
+
+    def test_sync_service_merge_row_expansion_limit(mock_balanco_df, isolated_cache_dirs, monkeypatch):
+        """Verifica que o processo falha se o merge gerar expansÒo exagerada de linhas."""
+        import logic.services.sync_service as sync
+    
+        class MockExcelReader:
+            def __init__(self, *args, **kwargs):
+                self.df = mock_balanco_df.copy()
+    
+        monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
+    
+        # Criar gestÒo com duplicatas
+        gestao_duplicada_df = pd.DataFrame({
+            "InstalaþÒo": [42074274, 42074274, 42074274],
+            "MÛs de ReferÛncia": ["01-2026", "01-2026", "02-2026"],
+            "Vencimento": ["10-02-2026", "11-02-2026", "10-03-2026"],
+            "Status": ["Pago", "Pago", "Atrasado"]
+        })
+    
+        original_pd_merge = pd.merge
+        def mock_merge_expansive(*args, **kwargs):
+            df_res = original_pd_merge(*args, **kwargs)
+            return pd.concat([df_res, df_res.iloc[[0]]], ignore_index=True)
+    
+        monkeypatch.setattr(sync.pd, "merge", mock_merge_expansive)
+    
+        gestao_io = io.BytesIO()
+        gestao_duplicada_df.to_excel(gestao_io, index=False, engine='openpyxl')
+        gestao_bytes = gestao_io.getvalue()
+    
+>       with pytest.raises(ValueError, match="Merge abortado"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_sync_service.py:183: Failed
+---------------------------- Captured stdout setup ----------------------------
+
+[DEBUG] PYTHONPATH: ['C:\\Projetos\\memoria_de_calculo\\tests', 'C:\\Projetos\\memoria_de_calculo', 'C:\\Users\\Stefan_Pratti\\AppData\\Local\\Programs\\Python\\Python313\\python313.zip']...
+------------------------------ Captured log call ------------------------------
+WARNING  logic.services.sync_service:sync_service.py:238 Base de GestÒo contÚm 1 faturas duplicadas para a mesma UC+PerÝodo. Elas serÒo marcadas como 'Conta dupla'.
+============================== warnings summary ===============================
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit
+  C:\Projetos\memoria_de_calculo\.venv\Lib\site-packages\openpyxl\packaging\core.py:99: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.datetime.utcnow()
+
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit
+  C:\Projetos\memoria_de_calculo\.venv\Lib\site-packages\openpyxl\writer\excel.py:292: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    workbook.properties.modified = datetime.datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit
+======================== 1 failed, 6 warnings in 0.61s ========================

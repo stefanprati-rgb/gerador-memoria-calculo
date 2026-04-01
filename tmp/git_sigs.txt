@@ -1,0 +1,8 @@
+LINE 95: def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, isolated_cache_dirs, monkeypatch):
+LINE 140: def test_sync_service_merge_row_expansion_limit(mock_balanco_df, isolated_cache_dirs, monkeypatch):
+LINE 172: def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_dirs, monkeypatch):
+LINE 194: def test_cancelado_nao_contamina_ativo(mock_balanco_df, isolated_cache_dirs, monkeypatch):
+LINE 228: def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, isolated_cache_dirs, monkeypatch):
+LINE 262: def test_pendencias_periodo_nao_lancado(mock_balanco_df, isolated_cache_dirs, monkeypatch):
+LINE 293: def test_pendencias_uc_ausente(mock_balanco_df, isolated_cache_dirs, monkeypatch):
+LINE 324: def test_pendencias_vazio_quando_todos_completos(mock_balanco_df, isolated_cache_dirs, monkeypatch):

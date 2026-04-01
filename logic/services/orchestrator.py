@@ -70,7 +70,7 @@ class Orchestrator:
         ucs_afetadas = []
         for _, row in incomplete_df.iterrows():
             ucs_afetadas.append({
-                "no_uc": str(row["No. UC"]),
+                "no_uc": str(row[ENRICHMENT_KEY]),
                 "referencia": str(row["Referencia"]),
                 "razao_social": str(row["Razao Social"])
             })
@@ -121,7 +121,7 @@ class Orchestrator:
         
         # Sanitização rigorosa de tipos para chaves de identificação (UCs e IBM)
         # Excel costuma carregar números como float (1.0), o que quebra o de-para com strings ("1")
-        for col in ["No. UC", HIERARCHY_KEY_COL, GROUPING_IBM_COL]:
+        for col in [ENRICHMENT_KEY, HIERARCHY_KEY_COL, GROUPING_IBM_COL]:
             if col in df.columns:
                 df[col] = (
                     df[col]
@@ -136,17 +136,17 @@ class Orchestrator:
         if GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
             # Grande cliente Raízen: usar IBM como chave de agrupamento
             # Preencher com No. UC apenas se IBM for nulo para garantir que não dropamos nada
-            df["group_key"] = df[GROUPING_IBM_COL].fillna(df[HIERARCHY_KEY_COL].fillna(df["No. UC"]))
+            df["group_key"] = df[GROUPING_IBM_COL].fillna(df[HIERARCHY_KEY_COL].fillna(df[ENRICHMENT_KEY]))
             keys.append("group_key")
         elif HIERARCHY_KEY_COL in df.columns:
             # Cliente com hierarquia tradicional
-            df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df["No. UC"])
+            df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df[ENRICHMENT_KEY])
             keys.append(HIERARCHY_KEY_COL)
         elif not group_by_distributor:
             # Se não há hierarquia e NÃO é Regra Embracon, forçamos individualidade (No. UC)
             # para evitar fundir faturas comuns do mesmo cliente indevidamente.
-            logger.info("Sem hierarquia ou Agrupamento forçado: mantendo UCs individuais (chave 'No. UC').")
-            keys.append("No. UC")
+            logger.info("Sem hierarquia ou Agrupamento forçado: mantendo UCs individuais (chave '%s').", ENRICHMENT_KEY)
+            keys.append(ENRICHMENT_KEY)
         
         # Preencher NA nas chaves temporariamente para o groupby não dropar
         for k in keys:
@@ -170,7 +170,7 @@ class Orchestrator:
                 parent_row = group_df.iloc[0].copy()
                 
                 # Modificar identificação
-                parent_row["No. UC"] = "Fatura Agrupada"
+                parent_row[ENRICHMENT_KEY] = "Fatura Agrupada"
                 parent_row[PARENT_ROW_FLAG] = True
                 
                 # Somar as colunas financeiras (min_count=1 garante que se tudo for NaN, fica NaN)

@@ -13,12 +13,13 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 class FirebaseAdapter:
-    """Cliente para operações no Firebase Storage."""
+    """Cliente para operações no Firebase Storage e Firestore."""
 
     def __init__(self, credentials_path: str, bucket_name: str):
         self.credentials_path = credentials_path
         self.bucket_name = bucket_name
         self._app = self._initialize_app()
+        # Inicializa o banco de dados no momento da criação
         self._db = self._get_db()
 
     def _initialize_app(self):
@@ -26,7 +27,7 @@ class FirebaseAdapter:
         try:
             if not firebase_admin._apps:
                 if not os.path.exists(self.credentials_path):
-                    logger.warning("Credenciais do Firebase não encontradas em: %s", self.credentials_path)
+                    logger.error("ERRO CRÍTICO: Arquivo de credenciais não encontrado em: %s", self.credentials_path)
                     return None
                 
                 cred = credentials.Certificate(self.credentials_path)
@@ -47,8 +48,9 @@ class FirebaseAdapter:
         return storage.bucket(app=self._app)
 
     def _get_db(self):
-        """Retorna o cliente do Firestore se o app estiver inicializado."""
+        """Inicializa e retorna o cliente do Firestore."""
         if not self._app:
+            logger.error("App Firebase não inicializado. Verifique as credenciais.")
             return None
         try:
             return firestore.client(app=self._app)

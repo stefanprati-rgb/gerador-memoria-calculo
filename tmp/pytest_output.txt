@@ -1,0 +1,33 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.2, pluggy-1.6.0 -- C:\Projetos\memoria_de_calculo\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projetos\memoria_de_calculo
+plugins: anyio-4.13.0, cov-7.1.0, mock-3.15.1
+collecting ... collected 8 items
+
+tests/test_sync_service.py::test_sync_service_merge_logic PASSED         [ 12%]
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit PASSED [ 25%]
+tests/test_sync_service.py::test_sync_service_protected_columns_dtype PASSED [ 37%]
+tests/test_sync_service.py::test_cancelado_nao_contamina_ativo PASSED    [ 50%]
+tests/test_sync_service.py::test_uc_sem_registro_no_periodo_retorna_nan PASSED [ 62%]
+tests/test_sync_service.py::test_pendencias_periodo_nao_lancado PASSED   [ 75%]
+tests/test_sync_service.py::test_pendencias_uc_ausente PASSED            [ 87%]
+tests/test_sync_service.py::test_pendencias_vazio_quando_todos_completos PASSED [100%]
+
+============================== warnings summary ===============================
+tests/test_sync_service.py: 35 warnings
+  C:\Projetos\memoria_de_calculo\.venv\Lib\site-packages\openpyxl\packaging\core.py:99: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.datetime.utcnow()
+
+tests/test_sync_service.py::test_sync_service_merge_logic
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit
+tests/test_sync_service.py::test_cancelado_nao_contamina_ativo
+tests/test_sync_service.py::test_uc_sem_registro_no_periodo_retorna_nan
+tests/test_sync_service.py::test_pendencias_periodo_nao_lancado
+tests/test_sync_service.py::test_pendencias_uc_ausente
+tests/test_sync_service.py::test_pendencias_vazio_quando_todos_completos
+  C:\Projetos\memoria_de_calculo\.venv\Lib\site-packages\openpyxl\writer\excel.py:292: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    workbook.properties.modified = datetime.datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 8 passed, 42 warnings in 2.14s ========================

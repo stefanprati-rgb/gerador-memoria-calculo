@@ -1,0 +1,282 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.2, pluggy-1.6.0 -- C:\Projetos\memoria_de_calculo\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projetos\memoria_de_calculo
+plugins: anyio-4.13.0
+collecting ... collected 3 items
+
+tests/test_excel_adapter.py::TestTemplateExcelWriter::test_destaque_laranja_em_celulas_vazias FAILED [ 33%]
+tests/test_sync_service.py::test_sync_service_merge_logic FAILED         [ 66%]
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit FAILED [100%]
+
+================================== FAILURES ===================================
+_______ TestTemplateExcelWriter.test_destaque_laranja_em_celulas_vazias _______
+
+self = <test_excel_adapter.TestTemplateExcelWriter object at 0x000002C2C018F240>
+sample_template_xlsx = 'C:\\Users\\Stefan_Pratti\\AppData\\Local\\Temp\\pytest-of-Stefan_Pratti\\pytest-16\\test_destaque_laranja_em_celul0\\mc_test.xlsx'
+
+    def test_destaque_laranja_em_celulas_vazias(self, sample_template_xlsx):
+        """Gerar Excel com linha sem Vencimento deve aplicar fundo laranja na cÚlula."""
+        df = pd.DataFrame({
+            "No. UC": ["UC001"],
+            "Vencimento": [pd.NA],
+            PARENT_ROW_FLAG: [False]
+        })
+    
+        writer = TemplateExcelWriter(sample_template_xlsx)
+        result = writer.generate_bytes(df, COLUMN_MAPPING)
+    
+        wb = openpyxl.load_workbook(io.BytesIO(result))
+        ws = wb.active
+    
+        # Vencimento estß na coluna 8 no COLUMN_MAPPING
+        cell = ws.cell(row=2, column=8)
+    
+        # FFE0B2 Ú o laranja claro. openpyxl retorna com o prefixo FF para opacidade total.
+        fill_color = cell.fill.start_color.rgb
+>       assert fill_color in ["FFFFE0B2", "00FFE0B2"]
+E       AssertionError: assert '00000000' in ['FFFFE0B2', '00FFE0B2']
+
+tests\test_excel_adapter.py:230: AssertionError
+________________________ test_sync_service_merge_logic ________________________
+
+mock_balanco_df =    Referencia        No. UC  ... Desconto Contratado Status Pos-Faturamento
+0  01/01/2026    42074274.0  ...          ...            Em aberto
+3  01/02/2026  4000476449.0  ...                  10              Em aberto
+
+[4 rows x 8 columns]
+mock_gestao_df =    InstalaþÒo MÛs de ReferÛncia  ... Cancelada Data de Cancelamento
+0    42074274           01-2026  ...       NÒo    ...     Sim           10-02-2026
+3  4000476449           02-2026  ...       NÒo                  NaN
+
+[4 rows x 6 columns]
+tmp_path = WindowsPath('C:/Users/Stefan_Pratti/AppData/Local/Temp/pytest-of-Stefan_Pratti/pytest-16/test_sync_service_merge_logic0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002C2C023C180>
+
+    def test_sync_service_merge_logic(mock_balanco_df, mock_gestao_df, tmp_path, monkeypatch):
+        """Testa se a normalizaþÒo de UC e perÝodo funciona e se cancelados sÒo ignorados."""
+        # Redefine os caminhos temporßrios
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        parquet_path = cache_dir / "base_consolidada.parquet"
+    
+        # Monkeypatching as constantes no sync_service
+        import logic.services.sync_service as sync
+        monkeypatch.setattr(sync, "CACHE_DIR", str(cache_dir))
+        monkeypatch.setattr(sync, "PARQUET_FILE", str(parquet_path))
+        monkeypatch.setattr(sync, "BALANCO_LOCAL", str(cache_dir / "Balanco_Energetico.xlsm"))
+        monkeypatch.setattr(sync, "GESTAO_LOCAL", str(cache_dir / "gd_gestao.xlsx"))
+    
+        # Para o teste nÒo ler o disco, precisamos mockar as leituras do Pandas ou ExcelAdapter
+        # Primeiro salvamos os mocks no temp dir para ele poder ler normalmente!
+    
+        # Criar um BaseExcelReader mockado que jß retorna o mock_balanco_df
+        class MockExcelReader:
+            def __init__(self, *args, **kwargs):
+                self.df = mock_balanco_df.copy()
+    
+        monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
+    
+        # Para o gestao, a leitura do excel Ú direta com pandas (nÒo usa adapter).
+        # Precisamos gerar bytes de um excel real para passar na funþÒo!
+        balanco_bytes = b"fake_balanco"  # adapter ignorarß porque mockamos a classe
+    
+        gestao_io = io.BytesIO()
+        mock_gestao_df.to_excel(gestao_io, index=False, engine='openpyxl')
+        gestao_bytes = gestao_io.getvalue()
+    
+        # Executa a funþÒo passando os bytes (que serÒo salvos nos paths que mockamos e lidos depois)
+        success, report = sync.build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, firebase_client=None)
+    
+        assert success is True
+        assert parquet_path.exists()
+    
+        # Validaþ§es no parquet gerado
+        df_result = pd.read_parquet(parquet_path, engine="fastparquet")
+        print("\n\n=== RESULTADO DO MERGE ===")
+        print(df_result[["No. UC", "Referencia", "Vencimento", "Status Pos-Faturamento"]].to_string())
+        print("==========================\n")
+    
+        # Converter a coluna para string YYYY-MM-DD para simplificar o teste, mas o pandas salva
+        # datas do fastparquet. A Referencia vem como string "01/01/2026" do nosso mock!
+        # O df_result["Referencia"] fica "01/01/2026".
+    
+        # Importante: O sync_service tenta converter colunas object para numerico, entao 'No. UC' vira float.
+        df_result["No. UC"] = pd.to_numeric(df_result["No. UC"], errors="coerce")
+    
+        print("\n--- DEBUG MASKS ---")
+        print(df_result.dtypes)
+        print("UC Match:", df_result["No. UC"] == 42074274.0)
+        print("Ref Match Fev:", df_result["Referencia"] == "01/02/2026")
+        mask_fev = (df_result["No. UC"] == 42074274.0) & (df_result["Referencia"] == "01/02/2026")
+        print("Combined Fev Match:", mask_fev)
+        print("Rows for Fev:\n", df_result[mask_fev])
+        print("-------------------\n")
+    
+        # 1. UC 42074274.0 deve casar com o inteiro 42074274
+        # E o merge por perodo deve garantir:
+        #   Jan/2026 -> Vence 10-02-2026, Pago
+        #   Fev/2026 -> Vence 10-03-2026, Atrasado
+        cliente_a_jan = df_result[(df_result["No. UC"] == 42074274.0) & (df_result["Referencia"] == "01/01/2026")].iloc[0]
+        cliente_a_fev = df_result[mask_fev].iloc[0]
+    
+        assert cliente_a_jan["Vencimento"] == "10-02-2026"
+        assert cliente_a_jan["Status Pos-Faturamento"] == "Pago"
+    
+        assert cliente_a_fev["Vencimento"] == "10-03-2026"
+        assert cliente_a_fev["Status Pos-Faturamento"] == "Atrasado"
+    
+        # 2. Cliente B foi "Cancelado" na GestÒo ("Sim").
+        # De acordo com a regra de neg¾cio atual, faturas canceladas sÒo REMOVIDAS da base consolidada.
+        mask_b = df_result["No. UC"] == 5143128.0
+>       assert mask_b.sum() == 0, "Fatura cancelada deveria ter sido removida da base consolidada"
+E       AssertionError: Fatura cancelada deveria ter sido removida da base consolidada
+E       assert np.int64(1) == 0
+E        +  where np.int64(1) = sum()
+E        +    where sum = 0    False\n1    False\n2     True\n3    False\nName: No. UC, dtype: bool.sum
+
+tests\test_sync_service.py:116: AssertionError
+---------------------------- Captured stdout call -----------------------------
+
+
+=== RESULTADO DO MERGE ===
+         No. UC  Referencia  Vencimento Status Pos-Faturamento
+0    42074274.0  01/01/2026  10-02-2026                   Pago
+1    42074274.0  01/02/2026  10-03-2026               Atrasado
+2     5143128.0  01/01/2026  15-02-2026              Em aberto
+3  4000476449.0  01/02/2026  20-03-2026                   Pago
+==========================
+
+
+--- DEBUG MASKS ---
+Referencia                 object
+No. UC                    float64
+CPF/CNPJ                   object
+Razao Social               object
+Distribuidora              object
+Cred. Consumido Raizen      int64
+Desconto Contratado         int64
+Status Pos-Faturamento     object
+Vencimento                 object
+_is_duplicate_gestao         bool
+dtype: object
+UC Match: 0     True
+1     True
+2    False
+3    False
+Name: No. UC, dtype: bool
+Ref Match Fev: 0    False
+1     True
+2    False
+3     True
+Name: Referencia, dtype: bool
+Combined Fev Match: 0    False
+1     True
+2    False
+3    False
+dtype: bool
+Rows for Fev:
+    Referencia      No. UC  ...  Vencimento _is_duplicate_gestao
+1  01/02/2026  42074274.0  ...  10-03-2026                False
+
+[1 rows x 10 columns]
+-------------------
+
+_________________ test_sync_service_merge_row_expansion_limit _________________
+
+mock_balanco_df =    Referencia        No. UC  ... Desconto Contratado Status Pos-Faturamento
+0  01/01/2026    42074274.0  ...          ...            Em aberto
+3  01/02/2026  4000476449.0  ...                  10              Em aberto
+
+[4 rows x 8 columns]
+tmp_path = WindowsPath('C:/Users/Stefan_Pratti/AppData/Local/Temp/pytest-of-Stefan_Pratti/pytest-16/test_sync_service_merge_row_ex0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002C2C023C050>
+
+    def test_sync_service_merge_row_expansion_limit(mock_balanco_df, tmp_path, monkeypatch):
+        """Verifica que o processo falha se o merge gerar expansÒo exagerada de linhas (duplicatas na gestÒo)."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        parquet_path = cache_dir / "base_consolidada.parquet"
+    
+        import logic.services.sync_service as sync
+        monkeypatch.setattr(sync, "CACHE_DIR", str(cache_dir))
+        monkeypatch.setattr(sync, "PARQUET_FILE", str(parquet_path))
+        monkeypatch.setattr(sync, "BALANCO_LOCAL", str(cache_dir / "Balanco_Energetico.xlsm"))
+        monkeypatch.setattr(sync, "GESTAO_LOCAL", str(cache_dir / "gd_gestao.xlsx"))
+    
+        class MockExcelReader:
+            def __init__(self, *args, **kwargs):
+                self.df = mock_balanco_df.copy()
+    
+        monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
+    
+        # Criar gestÒo com duplicatas para uma mesma UC e PerÝodo (causarß explosÒo de linhas no merge)
+        # mock_balanco_df tem 4 linhas. Se adicionarmos 1 registro duplicado, teremos 5 linhas (25% de expansÒo)
+        gestao_duplicada_df = pd.DataFrame({
+            "InstalaþÒo": [42074274, 42074274, 42074274], # Duplicado para a mesma UC
+            "MÛs de ReferÛncia": ["01-2026", "01-2026", "02-2026"], # Duas entradas para Jan-2026
+            "Vencimento": ["10-02-2026", "11-02-2026", "10-03-2026"],
+            "Status": ["Pago", "Pago", "Atrasado"]
+        })
+    
+        # Note: O sync_service faz drop_duplicates(keep='last') na gestÒo antes do merge.
+        # Para forþar a expansÒo, precisamos que as chaves de merge sejam diferentes OU bugar o drop_duplicates.
+        # Mas o c¾digo atual FAZ drop_duplicates antes do merge!
+        # "Deduplicar gestÒo preservando o perÝodo"
+        # df_gestao = df_gestao.drop_duplicates(subset=merge_keys, keep="last")
+    
+        # Se o drop_duplicates estß lß, o merge nunca deve gerar linhas extras a menos que MERGE_KEYS falhe.
+        # Ah! O problema descrito na tarefa diz: "Um merge que produz mais linhas que a base original (por duplicatas na GestÒo) passa silenciosamente"
+        # Se o drop_duplicates jß existe, talvez ele nÒo seja suficiente ou as chaves estejam incompletas.
+    
+        # Vamos olhar o c¾digo do sync_service novamente.
+        # merge_keys = ["No. UC_norm"]
+        # if ref_merge_col in df_gestao.columns and ref_merge_col in df_consolidado.columns:
+        #     merge_keys.append(ref_merge_col)
+    
+        # Se eu quiser testar a VALIDAÃ├O, eu preciso forþar a expansÒo.
+        # Se eu remover o drop_duplicates no teste (via monkeypatch ou similar) eu posso testar a validaþÒo.
+        # Mas a tarefa Pede para adicionar a validaþÒo PORQUE o merge pode produzir mais linhas.
+    
+        # Se eu criar uma gestÒo que DESAFIA o drop_duplicates atual?
+        # O drop_duplicates usa merge_keys, que inclui Referencia_merge se disponÝvel.
+    
+        # Vamos forþar a falha da validaþÒo mockando o pd.merge no m¾dulo sync para retornar um DF maior.
+        original_pd_merge = pd.merge
+        def mock_merge_expansive(*args, **kwargs):
+            df_res = original_pd_merge(*args, **kwargs)
+            # Adicionar uma linha extra artificialmente para disparar a validaþÒo
+            return pd.concat([df_res, df_res.iloc[[0]]], ignore_index=True)
+    
+        monkeypatch.setattr(sync.pd, "merge", mock_merge_expansive)
+    
+        gestao_io = io.BytesIO()
+        gestao_duplicada_df.to_excel(gestao_io, index=False, engine='openpyxl')
+        gestao_bytes = gestao_io.getvalue()
+    
+>       with pytest.raises(ValueError, match="Merge abortado"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests\test_sync_service.py:186: Failed
+------------------------------ Captured log call ------------------------------
+WARNING  logic.services.sync_service:sync_service.py:236 Base de GestÒo contÚm 1 faturas duplicadas para a mesma UC+PerÝodo. Elas serÒo marcadas como 'Conta dupla'.
+============================== warnings summary ===============================
+tests/test_excel_adapter.py: 5 warnings
+tests/test_sync_service.py: 10 warnings
+  C:\Projetos\memoria_de_calculo\.venv\Lib\site-packages\openpyxl\packaging\core.py:99: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.datetime.utcnow()
+
+tests/test_excel_adapter.py::TestTemplateExcelWriter::test_destaque_laranja_em_celulas_vazias
+tests/test_excel_adapter.py::TestTemplateExcelWriter::test_destaque_laranja_em_celulas_vazias
+tests/test_sync_service.py::test_sync_service_merge_logic
+tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit
+  C:\Projetos\memoria_de_calculo\.venv\Lib\site-packages\openpyxl\writer\excel.py:292: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    workbook.properties.modified = datetime.datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_excel_adapter.py::TestTemplateExcelWriter::test_destaque_laranja_em_celulas_vazias
+FAILED tests/test_sync_service.py::test_sync_service_merge_logic - AssertionE...
+FAILED tests/test_sync_service.py::test_sync_service_merge_row_expansion_limit
+======================= 3 failed, 19 warnings in 0.89s ========================

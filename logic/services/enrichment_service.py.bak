@@ -1,0 +1,140 @@
+"""
+Serviço de persistência para mapeamentos extras (enriquecimento de dados).
+Migrado para Google Cloud Firestore via FirebaseAdapter.
+Suporta migração automática de JSON local para a nuvem.
+"""
+import os
+import json
+import pandas as pd
+import logging
+from typing import List, Optional
+from logic.core.mapping import ENRICHMENT_KEY
+
+logger = logging.getLogger(__name__)
+
+# --- CONFIGURAÇÃO FIREBASE ---
+COLLECTION_NAME = "uc_mappings"
+_adapter = None
+
+def _get_adapter():
+    """Inicialização preguiçosa (Lazy loading) do adaptador Firebase."""
+    global _adapter
+    if _adapter is None:
+        try:
+            from logic.adapters.firebase_adapter import FirebaseAdapter
+            from config.settings import settings
+            _adapter = FirebaseAdapter(settings.firebase_credentials_path, settings.firebase_storage_bucket)
+            if not _adapter._app:
+                logger.warning("Firebase não inicializado no Enrichment Service. Fallback para Local? (Não implementado por design Nuvem First)")
+        except Exception as e:
+            logger.error("Falha ao obter adaptador Firebase: %s", e)
+    return _adapter
+
+# --- LEGACY LOCAL PATH (PARA MIGRAÇÃO) ---
+DATA_PATH = os.path.join(os.getcwd(), "data", "mappings")
+
+def save_mapping(profile_name: str, df: pd.DataFrame) -> bool:
+    """
+    Salva um DataFrame de de-para no Firestore.
+    O 'profile_name' é o ID do documento.
+    """
+    try:
+        if df.empty:
+            logger.warning("Tentativa de salvar mapping vazio para o perfil '%s'.", profile_name)
+            return False
+            
+        adapter = _get_adapter()
+        if not adapter or not adapter._db:
+            logger.error("Firestore não disponível para salvar mapping.")
+            return False
+            
+        if ENRICHMENT_KEY not in df.columns:
+            logger.error("A coluna chave '%s' não encontrada no DataFrame.", ENRICHMENT_KEY)
+            return False
+            
+        # Converter DataFrame para dicionário: {uc: {col: val}}
+        mapping_dict = df.set_index(ENRICHMENT_KEY).to_dict(orient="index")
+        
+        # Salvar no Firestore
+        doc_ref = adapter._db.collection(COLLECTION_NAME).document(profile_name)
+        doc_ref.set(mapping_dict)
+            
+        logger.info("Mapeamento '%s' salvo com sucesso no Firestore.", profile_name)
+        return True
+    except Exception as e:
+        logger.exception("Erro ao salvar mapeamento '%s' no Firestore: %s", profile_name, str(e))
+        return False
+
+def load_mapping(profile_name: str) -> Optional[pd.DataFrame]:
+    """
+    Carrega o mapeamento do Firestore. 
+    Se não existir na nuvem, tenta migrar do arquivo JSON local se disponível.
+    """
+    try:
+        adapter = _get_adapter()
+        if not adapter or not adapter._db:
+            logger.error("Firestore não disponível para carregar mapping.")
+            return None
+            
+        # 1. Tentar carregar do Firestore
+        doc_ref = adapter._db.collection(COLLECTION_NAME).document(profile_name)
+        doc = doc_ref.get()
+        
+        if doc.exists:
+            mapping_dict = doc.to_dict()
+            return _dict_to_df(mapping_dict)
+            
+        # 2. Se não existe no Firestore, tentar Migração do Local
+        local_df = _load_local_legacy(profile_name)
+        if local_df is not None:
+            logger.info("Migrando perfil '%s' do local para o Firestore...", profile_name)
+            if save_mapping(profile_name, local_df):
+                 return local_df
+        
+        logger.warning("Perfil '%s' não localizado (Nuvem ou Local).", profile_name)
+        return None
+    except Exception as e:
+        logger.exception("Falha ao carregar o mapeamento '%s': %s", profile_name, str(e))
+        return None
+
+def list_profiles() -> List[str]:
+    """
+    Retorna uma lista contendo os IDs de todos os perfis configurados no Firestore.
+    """
+    try:
+        adapter = _get_adapter()
+        if not adapter or not adapter._db:
+            return []
+            
+        docs = adapter._db.collection(COLLECTION_NAME).list_documents()
+        return sorted([doc.id for doc in docs])
+    except Exception as e:
+        logger.error("Erro ao listar perfis no Firestore: %s", str(e))
+        return []
+
+# --- HELPERS INTERNOS ---
+
+def _dict_to_df(mapping_dict: dict) -> pd.DataFrame:
+    """Converte o dicionário do Firestore/JSON de volta para DataFrame do pandas."""
+    if not mapping_dict:
+        return pd.DataFrame(columns=[ENRICHMENT_KEY])
+    
+    df = pd.DataFrame.from_dict(mapping_dict, orient="index").reset_index()
+    df.rename(columns={"index": ENRICHMENT_KEY}, inplace=True)
+    return df
+
+def _load_local_legacy(profile_name: str) -> Optional[pd.DataFrame]:
+    """Tenta carregar um arquivo JSON legado do disco local."""
+    try:
+        clean_name = profile_name.replace(".json", "").strip()
+        file_path = os.path.join(DATA_PATH, f"{clean_name}.json")
+        
+        if not os.path.exists(file_path):
+            return None
+            
+        with open(file_path, "r", encoding="utf-8") as f:
+            mapping_dict = json.load(f)
+            
+        return _dict_to_df(mapping_dict)
+    except Exception:
+        return None

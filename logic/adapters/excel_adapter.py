@@ -18,6 +18,7 @@ from logic.core.mapping import (
     PERIOD_COLUMN,
     PARENT_ROW_FLAG,
     OPTIONAL_BASE_COLUMNS,
+    ENRICHMENT_KEY,
 )
 
 import logging
@@ -376,7 +377,7 @@ class TemplateExcelWriter:
                         new_cell.font = missing_font
                         
                         # Adicionar comentário na coluna No. UC ou Instalação (se disponível)
-                        uc_logical_col = "No. UC" if "No. UC" in template_col_to_idx else "CPF/CNPJ"
+                        uc_logical_col = ENRICHMENT_KEY if ENRICHMENT_KEY in template_col_to_idx else "CPF/CNPJ"
                         if uc_logical_col in template_col_to_idx:
                             uc_idx = template_col_to_idx[uc_logical_col]
                             uc_cell = ws.cell(row=current_row, column=uc_idx)
