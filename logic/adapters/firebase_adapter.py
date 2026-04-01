@@ -26,11 +26,26 @@ class FirebaseAdapter:
         """Inicializa o app do Firebase se ainda não foi inicializado."""
         try:
             if not firebase_admin._apps:
-                if not os.path.exists(self.credentials_path):
-                    logger.error("ERRO CRÍTICO: Arquivo de credenciais não encontrado em: %s", self.credentials_path)
+                # Resolve o caminho absoluto para o log ser mais útil
+                abs_path = os.path.abspath(self.credentials_path)
+                logger.info("DEBUG | Tentando inicializar Firebase com credenciais em: %s", abs_path)
+
+                if not os.path.exists(abs_path):
+                    logger.error("ERRO CRÍTICO: Arquivo de credenciais NÃO ENCONTRADO no caminho esperado: %s", abs_path)
+                    
+                    # Procura na raiz do projeto por qualquer ficheiro .json que contenha 'firebase' no nome
+                    # Isso ajuda o usuário a identificar se o nome no .env está errado
+                    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    json_files = [f for f in os.listdir(root_dir) if f.endswith('.json') and 'firebase' in f.lower()]
+                    
+                    if json_files:
+                        logger.warning("SUGESTÃO | Encontramos os seguintes arquivos JSON com 'firebase' na raiz: %s. Verifique se um deles é o correto no seu arquivo .env.", json_files)
+                    else:
+                        logger.error("ERRO ADICIONAL | Nenhum arquivo JSON contendo 'firebase' foi encontrado na raiz do projeto (%s).", root_dir)
+                    
                     return None
                 
-                cred = credentials.Certificate(self.credentials_path)
+                cred = credentials.Certificate(abs_path)
                 app = firebase_admin.initialize_app(cred, {
                     'storageBucket': self.bucket_name
                 })
@@ -42,6 +57,22 @@ class FirebaseAdapter:
             logger.error("Falha ao inicializar Firebase: %s", e)
             return None
 
+    def test_connection(self):
+        """Tenta listar as coleções do Firestore para validar conexão silênciosamente."""
+        try:
+            db = self._get_db()
+            if not db:
+                logger.error("Falha silenciosa: Firestore indisponível.")
+                return False
+            
+            # Lista apenas a primeira para teste rápido
+            _ = list(db.collections(timeout=5))
+            logger.info("Conexão Firestore OK")
+            return True
+        except Exception as e:
+            logger.error("Falha no teste de conexão Firestore: %s", e)
+            return False
+
     def _get_bucket(self):
         if not self._app:
             return None
@@ -50,7 +81,7 @@ class FirebaseAdapter:
     def _get_db(self):
         """Inicializa e retorna o cliente do Firestore."""
         if not self._app:
-            logger.error("App Firebase não inicializado. Verifique as credenciais.")
+            logger.error("ERROR | App Firebase não inicializado. Verifique as credenciais.")
             return None
         try:
             return firestore.client(app=self._app)
