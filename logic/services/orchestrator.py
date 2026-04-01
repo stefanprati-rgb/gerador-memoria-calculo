@@ -20,6 +20,7 @@ from logic.core.mapping import (
     CLASSIFICATION_LABEL_FATURA,
     CLASSIFICATION_LABEL_REGRA,
     CLASSIFICATION_COL,
+    ENRICHMENT_KEY,
 )
 import pandas as pd
 from typing import Any, List, Optional, Dict
@@ -263,17 +264,26 @@ class Orchestrator:
         )
         return df
 
-    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False) -> Optional[bytes]:
+    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None) -> Optional[bytes]:
         """
         Filtra a base, aplica agrupamento e gera o arquivo Excel com os dados mapeados.
         
         Args:
             incomplete_filter: 'all' (tudo), 'complete_only' (sem incompletos), 'incomplete_only' (só incompletos).
             group_by_distributor: Se True, aplica a regra de agrupamento por Distribuidora.
+            enrichment_df: DataFrame extra para enriquecer os dados base via merge por 'No. UC'.
         """
-        logger.info("Gerando planilha para %d clientes, %d períodos. Filtro: %s | Agrupar por Distribuidora: %s", len(selected_clients), len(selected_periods), incomplete_filter, group_by_distributor)
+        logger.info("Gerando planilha para %d clientes, %d períodos. Filtro: %s | Agrupar por Distribuidora: %s | Enriquecimento: %s", 
+                    len(selected_clients), len(selected_periods), incomplete_filter, group_by_distributor, enrichment_df is not None)
 
         filtered_df = self.reader.filter_data(selected_clients, selected_periods)
+
+        if enrichment_df is not None and not enrichment_df.empty:
+            # Segurança: Evitar que UCs duplicadas no mapeamento multipliquem as linhas na planilha final
+            clean_enrichment = enrichment_df.drop_duplicates(subset=[ENRICHMENT_KEY], keep='last')
+            logger.info("Aplicando enriquecimento (left merge) em %d registros.", len(filtered_df))
+            filtered_df = pd.merge(filtered_df, clean_enrichment, on=ENRICHMENT_KEY, how='left')
+            logger.info("Enriquecimento de dados aplicado (%d novas colunas).", len(enrichment_df.columns) - 1)
 
         if filtered_df.empty:
             logger.warning("Nenhum dado encontrado após aplicar os filtros.")
@@ -303,16 +313,22 @@ class Orchestrator:
             if col not in processed_df.columns:
                 processed_df[col] = pd.NA
         
-        # 2. Reordenar e restringir estritamente para as 15 colunas do mapping + flag interna
-        # Isso garante que nenhuma coluna de enriquecimento ou controle vaze para o Excel final
-        legacy_columns = list(COLUMN_MAPPING.keys())
-        processed_df = processed_df.reindex(columns=legacy_columns + [PARENT_ROW_FLAG])
+        # 2. Identificar colunas extras vindas do enrichment_df (que não estão no mapping original)
+        extra_cols = [c for c in processed_df.columns if c not in legacy_keys and c != PARENT_ROW_FLAG]
         
-        # 3. O Mapping deve seguir EXATAMENTE a ordem de chaves do COLUMN_MAPPING (14 colunas)
+        # 3. Reordenar e incluir colunas extras no final do DataFrame
+        final_columns = legacy_keys + extra_cols
+        processed_df = processed_df.reindex(columns=final_columns + [PARENT_ROW_FLAG])
+        
+        # 4. Construir o mapping completo (Orderly) preservando a ordem do Excel
         from collections import OrderedDict
         full_mapping = OrderedDict()
-        for k in legacy_columns:
+        for k in legacy_keys:
             full_mapping[k] = COLUMN_MAPPING[k]
+        
+        # Estender com as colunas novas do enriquecimento
+        for k in extra_cols:
+            full_mapping[k] = k
 
         writer = TemplateExcelWriter(self.template_file)
         excel_bytes = writer.generate_bytes(processed_df, full_mapping)
@@ -320,11 +336,10 @@ class Orchestrator:
         logger.info("Planilha gerada com sucesso (%d bytes).", len(excel_bytes))
         return excel_bytes
 
-    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False) -> Optional[bytes]:
+    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None) -> Optional[bytes]:
         """
         Recebe uma lista de dicionários com chaves 'name', 'clients' (List[str]), e 'periods' (List[str]).
-        Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados.
-        Retorna None se nenhum arquivo puder ser gerado.
+        Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados com suporte a enriquecimento.
         """
         import zipfile
         import io
@@ -344,7 +359,13 @@ class Orchestrator:
                     logger.warning("Grupo '%s' ignorado: sem clientes ou períodos.", group_name)
                     continue
 
-                excel_bytes = self.generate(clients, periods, incomplete_filter=incomplete_filter, group_by_distributor=group_by_distributor)
+                excel_bytes = self.generate(
+                    clients, 
+                    periods, 
+                    incomplete_filter=incomplete_filter, 
+                    group_by_distributor=group_by_distributor,
+                    enrichment_df=enrichment_df
+                )
                 if excel_bytes:
                     filename = group_name if group_name.endswith(".xlsx") else f"{group_name}.xlsx"
                     zip_file.writestr(filename, excel_bytes)
@@ -356,3 +377,24 @@ class Orchestrator:
 
         logger.info("Lote finalizado: %d arquivos gerados.", generated_count)
         return zip_buffer.getvalue()
+
+    def get_all_ucs_with_names(self) -> pd.DataFrame:
+        """
+        Retorna todas as UCs únicas e suas respectivas Razões Sociais da base carregada.
+        Usado para configuração de enriquecimento de dados.
+        """
+        if self.reader.df.empty:
+            return pd.DataFrame(columns=[ENRICHMENT_KEY, CLIENT_COLUMN])
+            
+        # Pegar apenas as colunas necessárias e remover duplicatas
+        cols = [ENRICHMENT_KEY, CLIENT_COLUMN]
+        for col in cols:
+             if col not in self.reader.df.columns:
+                  logger.warning("get_all_ucs_with_names: Coluna '%s' não encontrada.", col)
+                  return pd.DataFrame(columns=cols)
+                  
+        return (
+            self.reader.df[cols]
+            .drop_duplicates()
+            .sort_values(by=CLIENT_COLUMN)
+        )

@@ -28,6 +28,9 @@ HIERARCHY_KEY_COL = "UC p Rateio"
 HIERARCHY_PARENT_COL = "Main"
 HIERARCHY_PARENT_VALUE = "Y"
 
+# Chave usada para enriquecimento/vínculo de dados externos
+ENRICHMENT_KEY = "No. UC"
+
 # Colunas financeiras que devem ser SOMADAS na linha "Fatura Pai"
 SUM_COLUMNS = [
     "Cred. Consumido Raizen",

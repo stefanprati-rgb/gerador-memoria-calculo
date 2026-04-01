@@ -5,7 +5,7 @@ Permite inicializar o app, verificar metadata, fazer upload e download de arquiv
 
 import os
 import firebase_admin
-from firebase_admin import credentials, storage
+from firebase_admin import credentials, storage, firestore
 from datetime import datetime, timezone
 import logging
 from typing import Optional
@@ -19,6 +19,7 @@ class FirebaseAdapter:
         self.credentials_path = credentials_path
         self.bucket_name = bucket_name
         self._app = self._initialize_app()
+        self._db = self._get_db()
 
     def _initialize_app(self):
         """Inicializa o app do Firebase se ainda não foi inicializado."""
@@ -44,6 +45,16 @@ class FirebaseAdapter:
         if not self._app:
             return None
         return storage.bucket(app=self._app)
+
+    def _get_db(self):
+        """Retorna o cliente do Firestore se o app estiver inicializado."""
+        if not self._app:
+            return None
+        try:
+            return firestore.client(app=self._app)
+        except Exception as e:
+            logger.error("Erro ao obter cliente Firestore: %s", e)
+            return None
 
     def get_file_updated_time(self, blob_name: str) -> Optional[datetime]:
         """Retorna a data de atualização do arquivo no Storage, ou None se não existir."""
