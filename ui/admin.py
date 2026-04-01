@@ -15,6 +15,8 @@ from logic.adapters.firebase_adapter import FirebaseAdapter
 import os
 import pandas as pd
 
+from ui.utils.notifications import notify_completion
+
 
 def render_admin_panel():
     """Renderiza o painel admin na sidebar para upload e sincronização de bases."""
@@ -33,6 +35,7 @@ def render_admin_panel():
                         success, _ = build_consolidated_cache_from_local_network(path_rede)
                         if success:
                             st.success("✅ Base sincronizada da rede com sucesso!")
+                            notify_completion("Base sincronizada da rede!")
                             time.sleep(2)
                             st.rerun()
                         else:
@@ -65,6 +68,7 @@ def render_admin_panel():
                     success, _ = build_consolidated_cache_from_uploads(balanco_up.getvalue(), gestao_bytes, fb)
                     if success:
                         st.success("✅ Bases processadas com sucesso!")
+                        notify_completion("Bases processadas e arquivos cruzados!")
                         time.sleep(2)
                         st.rerun()
                     else:
