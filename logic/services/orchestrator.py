@@ -88,7 +88,7 @@ class Orchestrator:
         (soma) as informações financeiras. A linha pai é colocada acima das linhas das UCs filhas.
         
         Args:
-            group_by_distributor: Se True, garante que o agrupamento considere a Distribuidora (Regra Embracon).
+            group_by_distributor: Se True, garante que o agrupamento considere a Distribuidora.
         """
         if GROUPING_FLAG_COL not in df.columns:
             logger.info("Coluna '%s' não encontrada. Sem agrupamento.", GROUPING_FLAG_COL)
@@ -124,12 +124,12 @@ class Orchestrator:
 
         # Determinar a chave de agrupamento principal (Prioridade: Regra Embracon -> IBM -> Hierarchy -> No. UC)
         if group_by_distributor:
-            # Regra Embracon: agrupamento estrito por Referencia + Cliente + Distribuidora
-            logger.info("Aplicando Regra Embracon: Agrupamento estrito por Distribuidora.")
+            # Agrupamento estrito por Referencia + Cliente + Distribuidora
+            logger.info("Agrupamento estrito por Distribuidora ativado.")
             if "Distribuidora" in df.columns:
                 keys.append("Distribuidora")
             else:
-                logger.warning("Regra Embracon ativa mas coluna 'Distribuidora' não encontrada.")
+                logger.warning("Agrupamento por Distribuidora solicitado mas coluna não encontrada.")
         elif GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
             # Grande cliente Raízen: usar IBM como chave de agrupamento
             # Preencher com No. UC apenas se IBM for nulo para garantir que não dropamos nada
@@ -140,9 +140,9 @@ class Orchestrator:
             df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df["No. UC"])
             keys.append(HIERARCHY_KEY_COL)
         else:
-            # Novo Comportamento: Se não há hierarquia nem Embracon, NÃO agrupar (usar No. UC)
+            # Novo Comportamento: Se não há hierarquia nem agrupamento forçado, NÃO agrupar (usar No. UC)
             # Isso evita que faturas de um mesmo CNPJ/Distribuidora sejam fundidas acidentalmente.
-            logger.info("Sem hierarquia ou Regra Embracon: mantendo UCs individuais (chave 'No. UC').")
+            logger.info("Sem hierarquia ou Agrupamento forçado: mantendo UCs individuais (chave 'No. UC').")
             keys.append("No. UC")
         
         # Preencher NA nas chaves temporariamente para o groupby não dropar
@@ -267,7 +267,7 @@ class Orchestrator:
         
         Args:
             incomplete_filter: 'all' (tudo), 'complete_only' (sem incompletos), 'incomplete_only' (só incompletos).
-            group_by_distributor: Se True, aplica a regra de agrupamento por Distribuidora (Regra Embracon).
+            group_by_distributor: Se True, aplica a regra de agrupamento por Distribuidora.
         """
         logger.info("Gerando planilha para %d clientes, %d períodos. Filtro: %s | Agrupar por Distribuidora: %s", len(selected_clients), len(selected_periods), incomplete_filter, group_by_distributor)
 

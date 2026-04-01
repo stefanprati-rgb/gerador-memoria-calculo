@@ -187,7 +187,7 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
     
     st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
     st.session_state.group_state.group_by_distributor = st.toggle(
-        "Agrupar faturas por Distribuidora (Regra Embracon)",
+        "Agrupar faturas por Distribuidora",
         value=st.session_state.group_state.group_by_distributor,
         key=f"wiz_distributor_{group.id}"
     )
