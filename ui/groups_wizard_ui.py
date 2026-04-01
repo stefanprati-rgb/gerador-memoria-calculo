@@ -2,14 +2,14 @@ import time
 import streamlit as st
 from typing import List, Any
 from ui.state.group_state import (
-    Group, initialize_groups, add_group, remove_group, 
+    GroupState, initialize_groups, add_group, remove_group, 
     update_group_name, update_group_clients, clear_group_clients, 
     select_clients, update_group_periods
 )
 from ui.utils.search_utils import build_search_index, filter_values
 from ui.utils.format_utils import format_period_label, safe_key, sanitize_filename
 
-def _get_wizard_group() -> Group:
+def _get_wizard_group() -> GroupState:
     """O Wizard foca em apenas 1 grupo (projeto) por vez."""
     initialize_groups()
     if not st.session_state.groups:
@@ -56,7 +56,7 @@ def _render_stepper(current_step: int):
                 </div>
             """, unsafe_allow_html=True)
 
-def _render_step_1_clients(group: Group, available_clients: List[str]) -> None:
+def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> None:
     """Pede apenas os clientes."""
     st.markdown("<h4 style='margin-bottom: 0;'>1. Selecione os Clientes</h4>", unsafe_allow_html=True)
     
@@ -127,7 +127,7 @@ def _render_step_1_clients(group: Group, available_clients: List[str]) -> None:
             st.session_state.wizard_step = 2
             st.rerun()
 
-def _render_step_2_periods(group: Group, available_periods: List[str]) -> None:
+def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> None:
     """Pede os períodos e o nome final do arquivo."""
     st.markdown("<h4 style='margin-bottom: 0;'>2. Selecione os Meses</h4>", unsafe_allow_html=True)
     
@@ -185,6 +185,13 @@ def _render_step_2_periods(group: Group, available_periods: List[str]) -> None:
     if new_name != group.name:
         update_group_name(group.id, new_name)
     
+    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+    st.session_state.group_state.group_by_distributor = st.toggle(
+        "Agrupar faturas por Distribuidora (Regra Embracon)",
+        value=st.session_state.group_state.group_by_distributor,
+        key=f"wiz_distributor_{group.id}"
+    )
+    
     # Controles
     st.divider()
     col_back, _, col_next = st.columns([0.3, 0.4, 0.3])
@@ -197,7 +204,7 @@ def _render_step_2_periods(group: Group, available_periods: List[str]) -> None:
             st.session_state.wizard_step = 3
             st.rerun()
 
-def _render_step_3_review(group: Group, orch: Any) -> None:
+def _render_step_3_review(group: GroupState, orch: Any) -> None:
     """Resumo e botão Final de Geração com opções de filtro de completude."""
     st.markdown("<h4 style='margin-bottom: 0;'>3. Revisão Final</h4>", unsafe_allow_html=True)
     
@@ -241,7 +248,12 @@ def _render_step_3_review(group: Group, orch: Any) -> None:
     if st.button("🪄 Gerar Planilha Agora", type="primary", use_container_width=True):
         start_time = time.time()
         with st.spinner("Construindo planilha..."):
-            excel_data = orch.generate(group.clients, group.periods, incomplete_filter=incomplete_filter)
+            excel_data = orch.generate(
+                group.clients, 
+                group.periods, 
+                incomplete_filter=incomplete_filter,
+                group_by_distributor=st.session_state.group_state.group_by_distributor
+            )
             
         elapsed = time.time() - start_time
         if excel_data:

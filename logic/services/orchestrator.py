@@ -80,12 +80,15 @@ class Orchestrator:
             "ucs_afetadas": ucs_afetadas
         }
 
-    def _apply_grouping(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _apply_grouping(self, df: pd.DataFrame, group_by_distributor: bool = False) -> pd.DataFrame:
         """
         Aplica a lógica de agrupamento de faturas.
         
         Quando há UCs com Excecao Fat. = 'Agrupamento', cria UMA LINHA PAI que consolida 
         (soma) as informações financeiras. A linha pai é colocada acima das linhas das UCs filhas.
+        
+        Args:
+            group_by_distributor: Se True, garante que o agrupamento considere a Distribuidora (Regra Embracon).
         """
         if GROUPING_FLAG_COL not in df.columns:
             logger.info("Coluna '%s' não encontrada. Sem agrupamento.", GROUPING_FLAG_COL)
@@ -119,8 +122,15 @@ class Orchestrator:
                     .replace(["nan", "None", ""], pd.NA)  # Voltar pd.NA real após converter para str
                 )
 
-        # Determinar a chave de agrupamento principal (Prioridade: IBM -> Hierarchy -> Keys)
-        if GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
+        # Determinar a chave de agrupamento principal (Prioridade: Regra Embracon -> IBM -> Hierarchy -> No. UC)
+        if group_by_distributor:
+            # Regra Embracon: agrupamento estrito por Referencia + Cliente + Distribuidora
+            logger.info("Aplicando Regra Embracon: Agrupamento estrito por Distribuidora.")
+            if "Distribuidora" in df.columns:
+                keys.append("Distribuidora")
+            else:
+                logger.warning("Regra Embracon ativa mas coluna 'Distribuidora' não encontrada.")
+        elif GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
             # Grande cliente Raízen: usar IBM como chave de agrupamento
             # Preencher com No. UC apenas se IBM for nulo para garantir que não dropamos nada
             df["group_key"] = df[GROUPING_IBM_COL].fillna(df[HIERARCHY_KEY_COL].fillna(df["No. UC"]))
@@ -130,9 +140,10 @@ class Orchestrator:
             df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df["No. UC"])
             keys.append(HIERARCHY_KEY_COL)
         else:
-            # Fallback para o comportamento antigo se nada de hierarquia existir
-            if "CPF/CNPJ" in df.columns: keys.append("CPF/CNPJ")
-            if "Distribuidora" in df.columns: keys.append("Distribuidora")
+            # Novo Comportamento: Se não há hierarquia nem Embracon, NÃO agrupar (usar No. UC)
+            # Isso evita que faturas de um mesmo CNPJ/Distribuidora sejam fundidas acidentalmente.
+            logger.info("Sem hierarquia ou Regra Embracon: mantendo UCs individuais (chave 'No. UC').")
+            keys.append("No. UC")
         
         # Preencher NA nas chaves temporariamente para o groupby não dropar
         for k in keys:
@@ -149,7 +160,7 @@ class Orchestrator:
             if HIERARCHY_PARENT_COL in group_df.columns:
                 mask_main = group_df[HIERARCHY_PARENT_COL].astype(str).str.strip().str.upper() == HIERARCHY_PARENT_VALUE
             
-            is_group = (mask_agrup.any() or mask_main.any()) and len(group_df) > 1
+            is_group = (mask_agrup.any() or mask_main.any() or group_by_distributor) and len(group_df) > 1
             
             if is_group:
                 # CRIAR A FATURA PAI
@@ -162,9 +173,23 @@ class Orchestrator:
                 # Somar as colunas financeiras (min_count=1 garante que se tudo for NaN, fica NaN)
                 for col in SUM_COLUMNS:
                     if col in group_df.columns:
-                        parent_row[col] = pd.to_numeric(group_df[col], errors="coerce").sum(min_count=1)
+                        # Limpeza de valores financeiros no padrão brasileiro (ex: 1.234,56)
+                        def _clean_finance_val(v):
+                            if pd.isna(v): return v
+                            if isinstance(v, (int, float)): return v
+                            s = str(v).strip()
+                            # Trata hífens ou células vazias como zero para fins de soma
+                            if s in ["-", "--", " - ", ""]: 
+                                return "0"
+                            if "," in s:
+                                # Se tem vírgula, remove pontos de milhar e troca vírgula decimal por ponto
+                                return s.replace(".", "").replace(",", ".")
+                            return s
+
+                        series_clean = group_df[col].apply(_clean_finance_val)
+                        parent_row[col] = pd.to_numeric(series_clean, errors="coerce").sum(min_count=1)
                 
-                # Juntar a linha pai e as linhas filhas do grupo
+                # Juntar a linha pai e as linhas filhas do grupo (Preserva a integridade: Pai + Filhas)
                 grouped_dfs.append(pd.DataFrame([parent_row]))
                 grouped_dfs.append(group_df)
                 parent_count += 1
@@ -236,14 +261,15 @@ class Orchestrator:
         )
         return df
 
-    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all") -> Optional[bytes]:
+    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False) -> Optional[bytes]:
         """
         Filtra a base, aplica agrupamento e gera o arquivo Excel com os dados mapeados.
         
         Args:
             incomplete_filter: 'all' (tudo), 'complete_only' (sem incompletos), 'incomplete_only' (só incompletos).
+            group_by_distributor: Se True, aplica a regra de agrupamento por Distribuidora (Regra Embracon).
         """
-        logger.info("Gerando planilha para %d clientes, %d períodos. Filtro: %s", len(selected_clients), len(selected_periods), incomplete_filter)
+        logger.info("Gerando planilha para %d clientes, %d períodos. Filtro: %s | Agrupar por Distribuidora: %s", len(selected_clients), len(selected_periods), incomplete_filter, group_by_distributor)
 
         filtered_df = self.reader.filter_data(selected_clients, selected_periods)
 
@@ -266,7 +292,7 @@ class Orchestrator:
             return None
 
         # Fluxo de Layout Único (14 Colunas + Classificação)
-        processed_df = self._apply_grouping(filtered_df)
+        processed_df = self._apply_grouping(filtered_df, group_by_distributor=group_by_distributor)
         processed_df = self._apply_classification(processed_df)
         
         # 1. Garantir que todas as colunas do mapping existam (defensivo)
@@ -292,7 +318,7 @@ class Orchestrator:
         logger.info("Planilha gerada com sucesso (%d bytes).", len(excel_bytes))
         return excel_bytes
 
-    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all") -> Optional[bytes]:
+    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False) -> Optional[bytes]:
         """
         Recebe uma lista de dicionários com chaves 'name', 'clients' (List[str]), e 'periods' (List[str]).
         Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados.
@@ -301,7 +327,7 @@ class Orchestrator:
         import zipfile
         import io
 
-        logger.info("Gerando lote com %d grupos. Filtro: %s", len(groups), incomplete_filter)
+        logger.info("Gerando lote com %d grupos. Filtro: %s | Agrupar por Distribuidora: %s", len(groups), incomplete_filter, group_by_distributor)
 
         zip_buffer = io.BytesIO()
         generated_count = 0
@@ -316,7 +342,7 @@ class Orchestrator:
                     logger.warning("Grupo '%s' ignorado: sem clientes ou períodos.", group_name)
                     continue
 
-                excel_bytes = self.generate(clients, periods, incomplete_filter=incomplete_filter)
+                excel_bytes = self.generate(clients, periods, incomplete_filter=incomplete_filter, group_by_distributor=group_by_distributor)
                 if excel_bytes:
                     filename = group_name if group_name.endswith(".xlsx") else f"{group_name}.xlsx"
                     zip_file.writestr(filename, excel_bytes)
