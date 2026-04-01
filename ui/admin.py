@@ -30,7 +30,7 @@ def render_admin_panel():
                 st.markdown("**⚡ Sincronização Automática**")
                 st.info(f"O Balanço Energético foi encontrado no seu computador padrão.")
                 
-                if st.button("📥 Atualizar Bases Diretamente", use_container_width=True, type="primary"):
+                if st.button("📥 Atualizar Bases Diretamente", width='stretch', type="primary"):
                     with st.spinner("Puxando arquivo ultrarrápido da rede local..."):
                         success, _ = build_consolidated_cache_from_local_network(path_rede)
                         if success:
@@ -52,7 +52,7 @@ def render_admin_panel():
             if not can_sync:
                 st.caption("💡 Carregue ambas as planilhas para backup e atualização manual.")
 
-            if st.button("Sincronizar e Processar", use_container_width=True, disabled=not can_sync):
+            if st.button("Sincronizar e Processar", width='stretch', disabled=not can_sync):
                 with st.spinner("Processando e cruzando dados. Isso pode levar alguns minutos..."):
                     # Tentar inicializar Firebase para backup (opcional)
                     fb = None
@@ -95,7 +95,7 @@ def render_admin_panel():
                         st.dataframe(
                             df_pend[["no_uc", "razao_social", "referencia", "tipo"]],
                             hide_index=True,
-                            use_container_width=True
+                            width='stretch'
                         )
                 
                 # Exibir data da verificação

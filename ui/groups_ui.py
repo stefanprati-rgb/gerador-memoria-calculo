@@ -91,17 +91,17 @@ def _render_client_bulk_actions(group: GroupState, filtered_clients: List[str] |
     with col_sel_all:
         if filtered_clients is not None:
             btn_label = f"✅ Selecionar {len(filtered_clients)} Filtrados"
-            if st.button(btn_label, key=f"all_cli_{group.id}", use_container_width=True):
+            if st.button(btn_label, key=f"all_cli_{group.id}", width='stretch'):
                 select_clients(group.id, filtered_clients)
                 st.rerun()
         else:
-            if st.button("🧹 Limpar Selecionados", key=f"clear_cli_no_search_{group.id}", use_container_width=True):
+            if st.button("🧹 Limpar Selecionados", key=f"clear_cli_no_search_{group.id}", width='stretch'):
                 clear_group_clients(group.id)
                 st.rerun()
                 
     with col_clear:
         if filtered_clients is not None:
-            if st.button("🧹 Limpar Todos", key=f"clear_cli_{group.id}", use_container_width=True):
+            if st.button("🧹 Limpar Todos", key=f"clear_cli_{group.id}", width='stretch'):
                 clear_group_clients(group.id)
                 st.rerun()
 
@@ -131,12 +131,12 @@ def _render_period_selector(group: GroupState, available_periods: List[str]) -> 
     col_sel_all, col_clear = st.columns([1, 1])
     
     with col_sel_all:
-        if st.button("✅ Selecionar Todos", key=f"all_per_{group.id}", use_container_width=True):
+        if st.button("✅ Selecionar Todos", key=f"all_per_{group.id}", width='stretch'):
             update_group_periods(group.id, list(available_periods))
             st.rerun()
             
     with col_clear:
-        if st.button("🧹 Limpar", key=f"clear_per_{group.id}", use_container_width=True):
+        if st.button("🧹 Limpar", key=f"clear_per_{group.id}", width='stretch'):
             update_group_periods(group.id, [])
             st.rerun()
 
@@ -173,7 +173,7 @@ def render_generation_button(orch: Any) -> None:
     valid_groups = [g for g in st.session_state.groups if g.clients and g.periods]
     
     if not valid_groups:
-        st.button("⚡ Gerar Planilhas Selecionadas", type="primary", use_container_width=True, disabled=True)
+        st.button("⚡ Gerar Planilhas Selecionadas", type="primary", width='stretch', disabled=True)
         st.info("Adicione clientes e períodos aos grupos para habilitar a geração.")
         return
 
@@ -196,7 +196,7 @@ def render_generation_button(orch: Any) -> None:
             
             for alert in alerts:
                 with st.expander(f"Grupo: {alert['group_name']} — {alert['count']} pendências"):
-                    st.dataframe(alert["details"], use_container_width=True)
+                    st.dataframe(alert["details"], width='stretch')
             
             confirm = st.checkbox(
                 "Estou ciente dos dados ausentes e quero gerar mesmo assim",
@@ -207,7 +207,7 @@ def render_generation_button(orch: Any) -> None:
                 st.info("Você precisa confirmar que está ciente para prosseguir.")
 
     # 2. Botão de geração (desabilitado se houver pendências não confirmadas)
-    if st.button("⚡ Gerar Planilhas Selecionadas", type="primary", use_container_width=True, disabled=not can_proceed):
+    if st.button("⚡ Gerar Planilhas Selecionadas", type="primary", width='stretch', disabled=not can_proceed):
         start_time = time.time()
         
         if len(valid_groups) == 1:
@@ -232,7 +232,7 @@ def _generate_single(group: GroupState, orch: Any, start_time: float) -> None:
             data=excel_data,
             file_name=filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+            width='stretch',
         )
     else:
         st.warning("Nenhum dado encontrado para gerar a planilha com os filtros aplicados.")
@@ -257,7 +257,7 @@ def _generate_multiple(valid_groups: List[GroupState], orch: Any, start_time: fl
             data=zip_data,
             file_name="Memoria_De_Calculo_Lote.zip",
             mime="application/zip",
-            use_container_width=True,
+            width='stretch',
         )
     else:
         st.warning("Nenhum dado encontrado para gerar as planilhas com os filtros aplicados.")

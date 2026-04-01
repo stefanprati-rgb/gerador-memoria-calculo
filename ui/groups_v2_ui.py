@@ -22,7 +22,7 @@ def render_groups_section_v2(available_clients: List[str], available_periods: Li
     st.markdown("<br>", unsafe_allow_html=True)
     cols = st.columns([1, 2, 1])
     with cols[1]:
-        st.button("➕ Adicionar Novo Arquivo / Grupo", on_click=add_group, use_container_width=True, help="Útil se você quiser baixar vários arquivos separados de uma vez num ZIP.")
+        st.button("➕ Adicionar Novo Arquivo / Grupo", on_click=add_group, width='stretch', help="Útil se você quiser baixar vários arquivos separados de uma vez num ZIP.")
     st.markdown("---")
 
 
@@ -180,7 +180,7 @@ def _render_client_selector_v2(group: GroupState, available_clients: List[str]) 
         # Exibe os resultados como minúsculos botões em fluxo
         for client in unselected_clients:
              # st.button retorna True no exato momento do clique
-             if st.button(f"+ {client}", key=f"add_btn_{group.id}_{safe_key(client)}", use_container_width=True):
+             if st.button(f"+ {client}", key=f"add_btn_{group.id}_{safe_key(client)}", width='stretch'):
                  update_group_clients(group.id, client, True)
                  st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -237,7 +237,7 @@ def render_generation_button_v2(orch: Any) -> None:
     
     if not valid_groups:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.button("⚡ Gerar Planilhas Selecionadas", type="primary", use_container_width=True, disabled=True)
+        st.button("⚡ Gerar Planilhas Selecionadas", type="primary", width='stretch', disabled=True)
         return
 
     # 1. Verificar faturas incompletas em todos os grupos
@@ -263,7 +263,7 @@ def render_generation_button_v2(orch: Any) -> None:
             
             for alert in alerts:
                 with st.expander(f"No arquivo '{alert['group_name']}', faltam {alert['count']} datas"):
-                    st.dataframe(alert["details"], use_container_width=True)
+                    st.dataframe(alert["details"], width='stretch')
             
             st.markdown("<p style='font-weight: 600; margin-bottom: 5px;'>Como deseja gerar?</p>", unsafe_allow_html=True)
             total_all = total_incomplete + total_complete
@@ -282,7 +282,7 @@ def render_generation_button_v2(orch: Any) -> None:
 
     # 2. Botão de geração
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🪄 Criar Planilha(s) Agora", type="primary", use_container_width=True):
+    if st.button("🪄 Criar Planilha(s) Agora", type="primary", width='stretch'):
         start_time = time.time()
         
         if len(valid_groups) == 1:
@@ -305,7 +305,7 @@ def _generate_single_v2(group: GroupState, orch: Any, start_time: float, incompl
             data=excel_data,
             file_name=filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+            width='stretch',
             type="primary"
         )
     else:
@@ -329,7 +329,7 @@ def _generate_multiple_v2(valid_groups: List[GroupState], orch: Any, start_time:
             data=zip_data,
             file_name="Memoria_De_Calculo_Lote.zip",
             mime="application/zip",
-            use_container_width=True,
+            width='stretch',
             type="primary"
         )
     else:
