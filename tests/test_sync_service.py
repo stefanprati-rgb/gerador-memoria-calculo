@@ -206,7 +206,7 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_di
     assert isinstance(df_result["Status Pos-Faturamento"].iloc[0], str)
 
 
-def test_cancelado_nao_contamina_ativo(mock_balanco_df, tmp_path, monkeypatch):
+def test_cancelado_nao_contamina_ativo(mock_balanco_df, isolated_cache_dirs, monkeypatch):
     """Gestão com dois registros para a mesma UC+Período: um cancelado e um ativo."""
     parquet_path = isolated_cache_dirs["parquet"]
     import logic.services.sync_service as sync
@@ -239,7 +239,7 @@ def test_cancelado_nao_contamina_ativo(mock_balanco_df, tmp_path, monkeypatch):
     assert jan["Vencimento"] == "20-02-2026"
 
 
-def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, tmp_path, monkeypatch):
+def test_uc_sem_registro_no_periodo_retorna_nan(mock_balanco_df, isolated_cache_dirs, monkeypatch):
     """UC existe na gestão mas apenas em outro período."""
     parquet_path = isolated_cache_dirs["parquet"]
     import logic.services.sync_service as sync
