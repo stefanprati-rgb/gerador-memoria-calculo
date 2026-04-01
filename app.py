@@ -75,7 +75,17 @@ if base_file and template_file:
         available_clients = orch.get_available_clients()
 
         render_sidebar_metrics(available_clients, available_periods, len(orch.reader.df))
-        render_groups_section_wizard(available_clients, available_periods, orch)
+        
+        # --- NAVEGAÇÃO ---
+        st.sidebar.markdown("---")
+        mode = st.sidebar.radio("📍 Selecione o Módulo", ["🚀 Gerador de Memória", "⚙️ Enriquecimento de Dados"], index=0)
+        st.sidebar.markdown("---")
+
+        if mode == "🚀 Gerador de Memória":
+            render_groups_section_wizard(available_clients, available_periods, orch)
+        else:
+            from ui.client_config_ui import render_client_config
+            render_client_config(orch)
 
     except HeaderNotFoundError as e:
         st.error(f"🔍 Não foi possível detectar o cabeçalho na planilha: {e}")

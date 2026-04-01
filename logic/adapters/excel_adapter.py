@@ -293,8 +293,8 @@ class TemplateExcelWriter:
             # Mapear nome lógico da fonte para este índice físico
             template_col_to_idx[logical_name] = idx
             
-        # Deletar colunas fisicamente a partir da posição 16 (garantindo layout estrito de 15 colunas)
-        expected_cols = 15
+        # Deletar colunas fisicamente se houver excedente (garantindo layout conforme o mapping)
+        expected_cols = len(column_mapping)
         if original_max_col > expected_cols:
             ws.delete_cols(expected_cols + 1, original_max_col - expected_cols + 50)  # +50 margem de segurança
 

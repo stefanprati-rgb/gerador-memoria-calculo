@@ -8,6 +8,8 @@ from ui.state.group_state import (
 )
 from ui.utils.search_utils import build_search_index, filter_values
 from ui.utils.format_utils import format_period_label, safe_key, sanitize_filename
+from logic.services import enrichment_service
+import pandas as pd
 
 def _get_wizard_group() -> GroupState:
     """O Wizard foca em apenas 1 grupo (projeto) por vez."""
@@ -244,6 +246,25 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
             label_visibility="collapsed"
         )
 
+    st.divider()
+
+    # Perfil de Enriquecimento
+    st.markdown("<p style='font-weight: 600; margin-bottom: 5px;'>Enriquecimento de Dados (Opcional)</p>", unsafe_allow_html=True)
+    profiles = enrichment_service.list_profiles()
+    selected_enrichment = st.selectbox(
+        "Selecione um perfil mapeado para incluir códigos internos",
+        options=["Nenhum"] + profiles,
+        index=0,
+        key=f"wiz_enrichment_{group.id}",
+        help="Se selecionado, o sistema fará o merge dos dados do perfil com a base usando o No. UC antes de gerar o Excel."
+    )
+    
+    enrichment_df = None
+    if selected_enrichment != "Nenhum":
+         enrichment_df = enrichment_service.load_mapping(selected_enrichment)
+         if enrichment_df is not None:
+              st.success(f"✅ Enriquecimento aplicado usando o perfil: **{selected_enrichment}**")
+
     # Botão de geração
     if st.button("🪄 Gerar Planilha Agora", type="primary", use_container_width=True):
         start_time = time.time()
@@ -252,7 +273,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 group.clients, 
                 group.periods, 
                 incomplete_filter=incomplete_filter,
-                group_by_distributor=st.session_state.group_state.group_by_distributor
+                group_by_distributor=st.session_state.group_state.group_by_distributor,
+                enrichment_df=enrichment_df
             )
             
         elapsed = time.time() - start_time
@@ -282,4 +304,3 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
             update_group_periods(group.id, [])
             st.session_state.wizard_step = 1
             st.rerun()
-
