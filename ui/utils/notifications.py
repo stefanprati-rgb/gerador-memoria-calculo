@@ -43,8 +43,8 @@ def play_success_sound():
     })();
     </script>
     """
-    # Injeta o script em um componente oculto
-    st.iframe(srcdoc=chime_js, height=0, width=0)
+    # Injeta o script em um componente oculto para tocar o som
+    components.html(chime_js, height=0, width=0)
 
 def notify_completion(message="Processamento concluído com sucesso!"):
     """

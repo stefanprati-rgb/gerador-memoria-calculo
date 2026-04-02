@@ -24,48 +24,75 @@ class FirebaseAdapter:
 
     def _initialize_app(self):
         """
-        Inicializa o app do Firebase se ainda não foi inicializado.
-        Prioriza st.secrets (Streamlit Cloud) com fallback para arquivo local.
+        Inicializa o app do Firebase com prioridade:
+        1. Dicionário direto (dict)
+        2. Arquivo Local (string + exists)
+        3. Streamlit Secrets (st.secrets["firebase"])
         """
-        # --- Cópia de Segurança do Método Original (Backup) ---
-        # def _original_initialize_app(self):
+        # --- Backup do método anterior ---
+        # def _prev_initialize_app(self):
         #     if not firebase_admin._apps:
-        #         abs_path = os.path.abspath(self.credentials_path)
-        #         if not os.path.exists(abs_path): return None
-        #         cred = credentials.Certificate(abs_path)
+        #         import streamlit as st
+        #         if "firebase_credentials" in st.secrets:
+        #             cred_dict = dict(st.secrets["firebase_credentials"])
+        #             if "private_key" in cred_dict: cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+        #             cred = credentials.Certificate(cred_dict)
+        #         else:
+        #             abs_path = os.path.abspath(self.credentials_path)
+        #             if not os.path.exists(abs_path): return None
+        #             cred = credentials.Certificate(abs_path)
         #         return firebase_admin.initialize_app(cred, {'storageBucket': self.bucket_name})
-        # ------------------------------------------------------
+        # ---------------------------------
 
         try:
             if not firebase_admin._apps:
                 import streamlit as st
-                
-                # 1. Prioridade: Streamlit Secrets (Nuvem)
-                if "firebase_credentials" in st.secrets:
-                    logger.info("Firebase | Inicializando via st.secrets (Streamlit Cloud)")
-                    cred_dict = dict(st.secrets["firebase_credentials"])
-                    cred = credentials.Certificate(cred_dict)
-                
-                # 2. Fallback: Arquivo Local (Desenvolvimento)
-                else:
-                    abs_path = os.path.abspath(self.credentials_path)
-                    logger.info("Firebase | Tentando inicializar via arquivo local: %s", abs_path)
+                cred = None
+                source = ""
 
-                    if not os.path.exists(abs_path):
-                        logger.error("ERRO CRÍTICO: Credenciais não encontradas em st.secrets nem no arquivo: %s", abs_path)
-                        # Sugestão de correção (apenas para local)
-                        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                        json_files = [f for f in os.listdir(root_dir) if f.endswith('.json') and 'firebase' in f.lower()]
-                        if json_files:
-                            logger.warning("SUGESTÃO | Encontramos estes JSONs na raiz: %s", json_files)
-                        return None
+                # 1. Caso seja um dicionário direto
+                if isinstance(self.credentials_path, dict):
+                    logger.info("Firebase | Inicializando via Dicionário de credenciais fornecido.")
+                    cred_dict = self.credentials_path
+                    if "private_key" in cred_dict:
+                        cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+                    cred = credentials.Certificate(cred_dict)
+                    source = "Dicionário Direto"
+
+                # 2. Caso seja uma string (Caminho de Arquivo)
+                elif isinstance(self.credentials_path, str):
+                    abs_path = os.path.abspath(self.credentials_path)
+                    if os.path.exists(abs_path):
+                        logger.info("Firebase | Inicializando via Arquivo Local: %s", abs_path)
+                        cred = credentials.Certificate(abs_path)
+                        source = f"Arquivo Local ({abs_path})"
                     
-                    cred = credentials.Certificate(abs_path)
-                
+                    # 3. Fallback para st.secrets se o arquivo não existir
+                    elif "firebase" in st.secrets:
+                        logger.info("Firebase | Arquivo não encontrado. Usando st.secrets['firebase'].")
+                        cred_dict = dict(st.secrets["firebase"])
+                        if "private_key" in cred_dict:
+                            cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+                        cred = credentials.Certificate(cred_dict)
+                        source = "Streamlit Secrets"
+                    
+                    # 3.1 Fallback secundário (compatibilidade)
+                    elif "firebase_credentials" in st.secrets:
+                        logger.info("Firebase | Arquivo não encontrado. Usando st.secrets['firebase_credentials'].")
+                        cred_dict = dict(st.secrets["firebase_credentials"])
+                        if "private_key" in cred_dict:
+                            cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+                        cred = credentials.Certificate(cred_dict)
+                        source = "Streamlit Secrets (legacy key)"
+
+                if not cred:
+                    logger.error("ERRO CRÍTICO | Nenhuma credencial Firebase encontrada (Dict/Arquivo/Secrets).")
+                    return None
+
                 app = firebase_admin.initialize_app(cred, {
                     'storageBucket': self.bucket_name
                 })
-                logger.info("Firebase App inicializado com sucesso.")
+                logger.info("Firebase | App inicializado com sucesso via %s.", source)
                 return app
             else:
                 return firebase_admin.get_app()
