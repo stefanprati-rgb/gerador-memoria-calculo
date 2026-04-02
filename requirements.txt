@@ -4,6 +4,8 @@ streamlit>=1.30.0,<2.0.0
 altair>=5.0.0,<6.0.0
 pydantic-settings>=2.0.0,<3.0.0
 firebase-admin>=6.0.0,<7.0.0
+google-cloud-firestore>=2.0.0  # Para o banco de dados de perfis e grupos
+python-dateutil>=2.8.2  # Processamento de datas (Referência)
 
 # --- Parquet (pyarrow como primário, fastparquet como fallback) ---
 pyarrow>=15.0.0
