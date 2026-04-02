@@ -102,6 +102,10 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                         logger.error("Erro ao sincronizar regras de perfil: %s", profile_err)
                         
                     st.success(f"Grupo '{selected_shortcut}' carregado com sucesso.")
+                    
+                    # FIX: Resetar o estado do selectbox para evitar loop infinito
+                    st.session_state[f"wiz_shortcut_{group.id}"] = "Nenhum"
+                    
                     time.sleep(0.5)
                     st.rerun()
         else:
