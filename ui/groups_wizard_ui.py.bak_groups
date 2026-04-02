@@ -9,8 +9,6 @@ from ui.state.group_state import (
 from ui.utils.search_utils import build_search_index, filter_values
 from ui.utils.format_utils import format_period_label, safe_key, sanitize_filename
 from logic.services import enrichment_service
-from logic.services.client_group_service import save_client_group, list_client_groups, get_clients_from_group
-from ui.utils.notifications import notify_completion
 import pandas as pd
 
 def _get_wizard_group() -> GroupState:
@@ -64,32 +62,6 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
     """Pede apenas os clientes."""
     st.markdown("<h4 style='margin-bottom: 0;'>1. Selecione os Clientes</h4>", unsafe_allow_html=True)
     
-    # --- NOVO: ATALHOS DE SELEÇÃO (GRUPOS SALVOS) ---
-    try:
-        saved_groups = list_client_groups()
-        if saved_groups:
-            st.markdown("<p style='font-size: 0.85rem; margin-bottom: 5px; color: #666;'>Atalhos de Seleção (Grupos Salvos):</p>", unsafe_allow_html=True)
-            selected_shortcut = st.selectbox(
-                "Carregar grupo salvo",
-                options=["Nenhum"] + saved_groups,
-                index=0,
-                key=f"wiz_shortcut_{group.id}",
-                label_visibility="collapsed"
-            )
-            
-            if selected_shortcut != "Nenhum":
-                group_clients = get_clients_from_group(selected_shortcut)
-                if group_clients:
-                    select_clients(group.id, group_clients)
-                    st.success(f"✅ Grupo '{selected_shortcut}' carregado!")
-                    time.sleep(0.5)
-                    st.rerun()
-        else:
-            st.caption("Nenhum grupo de clientes salvo no momento.")
-    except Exception as e:
-        logger.error("Erro na interface de atalhos de grupos: %s", e)
-    # -----------------------------------------------
-
     # 1. Área de Cesta
     if group.clients:
         col_lbl, col_clr = st.columns([0.7, 0.3])
@@ -148,27 +120,6 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                  update_group_clients(group.id, client, True)
                  st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
-
-    # --- NOVO: SALVAR SELEÇÃO ---
-    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-    with st.expander("💾 Salvar esta seleção como um novo grupo"):
-        new_group_name = st.text_input("Nome do Novo Grupo", key=f"wiz_new_grp_name_{group.id}", placeholder="Ex: Clientes Setor Norte...")
-        if st.button("Confirmar e Salvar", key=f"wiz_save_grp_btn_{group.id}", type="secondary", use_container_width=True):
-            if not new_group_name:
-                st.error("Por favor, digite um nome para o grupo.")
-            elif not group.clients:
-                st.error("Selecione ao menos um cliente antes de salvar.")
-            else:
-                try:
-                    if save_client_group(new_group_name, group.clients):
-                        notify_completion(f"Grupo '{new_group_name}' salvo com sucesso!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Falha ao salvar no Firestore.")
-                except Exception as e:
-                    st.error(f"Erro ao salvar: {e}")
-    # ----------------------------
 
     # Controles de Navegação (Fixo em baixo)
     st.divider()

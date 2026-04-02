@@ -20,22 +20,22 @@ from ui.utils.notifications import notify_completion
 
 def render_admin_panel():
     """Renderiza o painel admin na sidebar para upload e sincronização de bases."""
-    with st.sidebar.expander("⚙️ Atualizar Bases (Admin)", expanded=False):
+    with st.sidebar.expander("Atualizar Bases (Admin)", expanded=False):
         admin_senha = st.text_input("Senha Admin", type="password")
         if admin_senha == settings.admin_password:
             # === FEATURE: Sincronização Local Rápida ===
             path_rede = settings.network_balanco_path
             if os.path.exists(path_rede):
                 st.markdown("---")
-                st.markdown("**⚡ Sincronização Automática**")
+                st.markdown("**Sincronização Automática**")
                 st.info(f"O Balanço Energético foi encontrado no seu computador padrão.")
                 
-                if st.button("📥 Atualizar Bases Diretamente", width='stretch', type="primary"):
+                if st.button("Atualizar Bases Diretamente", width='stretch', type="primary", icon="⬇️"):
                     with st.spinner("Puxando arquivo ultrarrápido da rede local..."):
                         success, _ = build_consolidated_cache_from_local_network(path_rede)
                         if success:
-                            st.success("✅ Base sincronizada da rede com sucesso!")
-                            notify_completion("Base sincronizada da rede!")
+                            st.success("Base sincronizada da rede com sucesso.")
+                            notify_completion("Base sincronizada da rede.")
                             time.sleep(2)
                             st.rerun()
                         else:
@@ -43,16 +43,16 @@ def render_admin_panel():
 
             # === FEATURE: Sincronização Manual / Nuvem ===
             st.markdown("---")
-            st.markdown("**☁️ Sincronização via Upload**")
+            st.markdown("**Sincronização via Upload**")
             balanco_up = st.file_uploader("Balanço Energético (.xlsm)", type=["xlsm", "xlsx"])
             gestao_up = st.file_uploader("Gestão Cobrança (.xlsx)", type=["xlsx"])
             
             can_sync = balanco_up is not None and gestao_up is not None
             
             if not can_sync:
-                st.caption("💡 Carregue ambas as planilhas para backup e atualização manual.")
+                st.caption("Carregue ambas as planilhas para backup e atualização manual.")
 
-            if st.button("Sincronizar e Processar", width='stretch', disabled=not can_sync):
+            if st.button("Sincronizar e Processar", width='stretch', disabled=not can_sync, icon="⚙️"):
                 with st.spinner("Processando e cruzando dados. Isso pode levar alguns minutos..."):
                     # Tentar inicializar Firebase para backup (opcional)
                     fb = None
@@ -67,8 +67,8 @@ def render_admin_panel():
                     gestao_bytes = gestao_up.getvalue()
                     success, _ = build_consolidated_cache_from_uploads(balanco_up.getvalue(), gestao_bytes, fb)
                     if success:
-                        st.success("✅ Bases processadas com sucesso!")
-                        notify_completion("Bases processadas e arquivos cruzados!")
+                        st.success("Bases processadas com sucesso.")
+                        notify_completion("Bases processadas e arquivos cruzados.")
                         time.sleep(2)
                         st.rerun()
                     else:
@@ -76,7 +76,7 @@ def render_admin_panel():
 
             # === FEATURE: Relatório de Pendências ===
             st.markdown("---")
-            st.subheader("📋 Pendências de Dados")
+            st.subheader("Pendências de Dados")
             report = get_pendencias()
             
             if report is None:
@@ -84,9 +84,9 @@ def render_admin_panel():
             else:
                 total = report.get("total_ucs_sem_vencimento", 0)
                 if total == 0:
-                    st.success("✅ Todos os dados estão completos.")
+                    st.success("Todos os dados estão completos.")
                 else:
-                    st.warning(f"⚠ Detectadas {total} faturas sem Vencimento.")
+                    st.warning(f"Detectadas {total} faturas sem Vencimento.")
                     
                     df_pend = pd.DataFrame(report["pendencias"])
                     if not df_pend.empty:
