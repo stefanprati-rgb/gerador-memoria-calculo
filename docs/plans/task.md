@@ -2,4 +2,5 @@
 
 | Task ID | Task Name | Status |
 | :--- | :--- | :--- |
-| 1 | Create Client Group Service | not_started |
+| 1 | Create Client Group Service | done |
+| 2 | Integrate Client Groups in Wizard UI | not_started |

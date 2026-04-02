@@ -46,9 +46,9 @@ def play_success_sound():
     # Injeta o script em um componente oculto para tocar o som
     components.html(chime_js, height=0, width=0)
 
-def notify_completion(message="Processamento concluído com sucesso!"):
+def notify_completion(message="Processamento concluído."):
     """
     Exibe uma notificação visual (toast) e emite um aviso sonoro.
     """
-    st.toast(message, icon="✅")
+    st.toast(message)
     play_success_sound()
