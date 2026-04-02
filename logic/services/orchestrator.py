@@ -132,21 +132,20 @@ class Orchestrator:
                 )
 
         # Determinar chaves adicionais de hierarquia (IBM -> Hierarchy -> No. UC)
-        # Aplicamos a lógica de identificação de subgrupos / hierarquias com base no que estiver disponível.
-        if GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
-            # Grande cliente Raízen: usar IBM como chave de agrupamento
-            # Preencher com No. UC apenas se IBM for nulo para garantir que não dropamos nada
-            df["group_key"] = df[GROUPING_IBM_COL].fillna(df[HIERARCHY_KEY_COL].fillna(df[ENRICHMENT_KEY]))
-            keys.append("group_key")
-        elif HIERARCHY_KEY_COL in df.columns:
-            # Cliente com hierarquia tradicional
-            df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df[ENRICHMENT_KEY])
-            keys.append(HIERARCHY_KEY_COL)
-        elif not group_by_distributor:
-            # Se não há hierarquia e NÃO é Regra Embracon, forçamos individualidade (No. UC)
-            # para evitar fundir faturas comuns do mesmo cliente indevidamente.
-            logger.info("Sem hierarquia ou Agrupamento forçado: mantendo UCs individuais (chave '%s').", ENRICHMENT_KEY)
-            keys.append(ENRICHMENT_KEY)
+        if not group_by_distributor:
+            if GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
+                df["group_key"] = df[GROUPING_IBM_COL].fillna(df[HIERARCHY_KEY_COL].fillna(df[ENRICHMENT_KEY]))
+                keys.append("group_key")
+            elif HIERARCHY_KEY_COL in df.columns:
+                df[HIERARCHY_KEY_COL] = df[HIERARCHY_KEY_COL].fillna(df[ENRICHMENT_KEY])
+                keys.append(HIERARCHY_KEY_COL)
+            else:
+                logger.info("Aplicando chave dinâmica para respeitar Excecao Fat.")
+                df["dynamic_key"] = df[ENRICHMENT_KEY].copy()
+                if GROUPING_FLAG_COL in df.columns:
+                    mask = df[GROUPING_FLAG_COL].astype(str).str.strip() == GROUPING_FLAG_VALUE
+                    df.loc[mask, "dynamic_key"] = "AGRUPADO"
+                keys.append("dynamic_key")
         
         # Preencher NA nas chaves temporariamente para o groupby não dropar
         for k in keys:
