@@ -47,6 +47,9 @@ PARENT_ROW_FLAG = "_is_parent"
 # Flag interna para marcar linhas separadoras em branco (não existe na base)
 SEPARATOR_ROW_FLAG = "_is_separator"
 
+# Flag interna para marcar linhas com inconsistências financeiras grotescas
+SANITY_WARNING_FLAG = "_sanity_warning"
+
 # --- CLASSIFICAÇÃO DE ORIGEM ---
 # Coluna da base que indica a origem do dado (Fatura, Contrato, Demonstrativo etc.)
 CLASSIFICATION_SOURCE_COL = "Fonte dos Dados"

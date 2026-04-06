@@ -22,6 +22,7 @@ from logic.core.mapping import (
     CLASSIFICATION_COL,
     ENRICHMENT_KEY,
     SEPARATOR_ROW_FLAG,
+    SANITY_WARNING_FLAG,
 )
 import pandas as pd
 from typing import Any, List, Optional, Dict
@@ -211,6 +212,38 @@ class Orchestrator:
         logger.info("Agrupamento: %d faturas pai geradas. Total de linhas agora: %d.", parent_count, len(df))
         return df
 
+    def _apply_financial_sanity_check(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Identifica anomalias grotescas linha a linha (human error).
+        Preenche a coluna SANITY_WARNING_FLAG com um aviso caso a matemática seja incompatível.
+        """
+        df = df.copy()
+        df[SANITY_WARNING_FLAG] = None
+
+        # Converter colunas necessárias para float garantindo limpeza
+        custo_sem_gd = pd.to_numeric(df["Custo s/ GD"].astype(str).str.replace(".", "").str.replace(",", "."), errors="coerce").fillna(0.0)
+        ganho_padrao = pd.to_numeric(df["Ganho total Padrão"].astype(str).str.replace(".", "").str.replace(",", "."), errors="coerce").fillna(0.0)
+        consumo = pd.to_numeric(df["Cred. Consumido Raizen"].astype(str).str.replace(".", "").str.replace(",", "."), errors="coerce").fillna(0.0)
+        # Tarifa Raizen no df de base pode já vir como número ou string. Se for string, tentaremos limpar.
+        tarifa = pd.to_numeric(df["Tarifa Raizen"].astype(str).str.replace(".", "").str.replace(",", "."), errors="coerce").fillna(0.0)
+
+        # Regra A: Custo s/ GD > 5 * (Consumo * Tarifa)
+        # Colocamos um mínimo de 1.0 no consumo/tarifa para evitar alertas falsos em faturas zeradas
+        mask_custo_desproporcional = (custo_sem_gd > 5 * (consumo * tarifa)) & (custo_sem_gd > 50) # Adicionamos > 50 reais para ignorar centavos
+
+        # Regra B: Ganho total Padrão > 60% do Custo s/ GD
+        mask_ganho_abusivo = (ganho_padrao > 0.6 * custo_sem_gd) & (ganho_padrao > 50)
+
+        # Aplicar aviso
+        warning_msg = "Aviso: Matemática financeira incompatível na base (Custo ou Ganho desproporcional ao Consumo)."
+        df.loc[mask_custo_desproporcional | mask_ganho_abusivo, SANITY_WARNING_FLAG] = warning_msg
+
+        count_warnings = (mask_custo_desproporcional | mask_ganho_abusivo).sum()
+        if count_warnings > 0:
+            logger.warning("Sanidade Financeira: %d linhas marcadas com possíveis erros de digitação.", count_warnings)
+
+        return df
+
     def _incomplete_mask(self, df: pd.DataFrame) -> pd.Series:
         """Retorna máscara booleana: True para linhas com Vencimento ausente."""
         if "Vencimento" not in df.columns:
@@ -311,6 +344,9 @@ class Orchestrator:
             logger.warning("Nenhum dado restante após filtro de completude.")
             return None
 
+        # Sanity Check Financeiro (Antes do agrupamento para capturar erros na origem)
+        filtered_df = self._apply_financial_sanity_check(filtered_df)
+
         # Fluxo de Layout Único (14 Colunas + Classificação)
         processed_df = self._apply_grouping(filtered_df, group_by_distributor=group_by_distributor)
         processed_df = self._apply_classification(processed_df)
@@ -326,7 +362,7 @@ class Orchestrator:
         
         # 3. Reordenar e incluir colunas extras no final do DataFrame
         final_columns = legacy_keys + extra_cols
-        processed_df = processed_df.reindex(columns=final_columns + [PARENT_ROW_FLAG, SEPARATOR_ROW_FLAG])
+        processed_df = processed_df.reindex(columns=final_columns + [PARENT_ROW_FLAG, SEPARATOR_ROW_FLAG, SANITY_WARNING_FLAG])
         
         # 4. Construir o mapping completo (Orderly) preservando a ordem do Excel
         from collections import OrderedDict

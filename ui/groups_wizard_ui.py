@@ -65,65 +65,120 @@ def _render_stepper(current_step: int):
 
 def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> None:
     """Pede apenas os clientes."""
-    st.markdown("<h4 style='margin-bottom: 0;'>1. Selecione os Clientes</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin-bottom: 10px;'>1. Selecione os Clientes</h4>", unsafe_allow_html=True)
     
-    # --- NOVO: ATALHOS DE SELEÇÃO (GRUPOS SALVOS) ---
-    try:
-        saved_groups = list_client_groups()
-        if saved_groups:
-            st.markdown("<p style='font-size: 0.85rem; margin-bottom: 5px; color: #666;'>Atalhos de Seleção (Grupos Salvos):</p>", unsafe_allow_html=True)
-            selected_shortcut = st.selectbox(
-                "Carregar grupo salvo",
-                options=["Nenhum"] + saved_groups,
-                index=0,
-                key=f"wiz_shortcut_{group.id}",
-                label_visibility="collapsed"
-            )
-            
-            if selected_shortcut != "Nenhum":
-                group_clients = get_clients_from_group(selected_shortcut)
-                if group_clients:
-                    select_clients(group.id, group_clients)
-                    
-                    try:
-                        profile = enrichment_service.load_mapping(selected_shortcut)
-                        if profile is not None:
-                            val = False
-                            if isinstance(profile, dict):
-                                val = profile.get("group_by_distributor", False)
-                            elif hasattr(profile, "get"):
-                                res = profile.get("group_by_distributor", False)
-                                if not isinstance(res, (pd.Series, pd.DataFrame)):
-                                    val = res
-                            
-                            st.session_state.group_state.group_by_distributor = bool(val)
-                            logger.info("Perfil de regras para '%s' carregado e aplicado ao estado da sessão.", selected_shortcut)
-                    except Exception as profile_err:
-                        logger.error("Erro ao sincronizar regras de perfil: %s", profile_err)
+    # --- BUSCA E CARREGAMENTO (Interface Limpa) ---
+    col_search, col_saved = st.columns([0.65, 0.35])
+    
+    with col_saved:
+        try:
+            saved_groups = list_client_groups()
+            if saved_groups:
+                selected_shortcut = st.selectbox(
+                    "Carregar grupo salvo",
+                    options=["Grupos Salvos"] + saved_groups,
+                    index=0,
+                    key=f"wiz_shortcut_{group.id}",
+                    label_visibility="collapsed"
+                )
+                
+                if selected_shortcut != "Grupos Salvos":
+                    group_clients = get_clients_from_group(selected_shortcut)
+                    if group_clients:
+                        select_clients(group.id, group_clients)
                         
-                    st.success(f"Grupo '{selected_shortcut}' carregado com sucesso.")
-                    
-                    # FIX: Resetar o estado do selectbox para evitar loop infinito
-                    st.session_state[f"wiz_shortcut_{group.id}"] = "Nenhum"
-                    
-                    time.sleep(0.5)
-                    st.rerun()
-        else:
-            st.caption("Nenhum grupo de clientes salvo no momento.")
-    except Exception as e:
-        logger.error("Erro na interface de atalhos de grupos: %s", e)
-    # -----------------------------------------------
+                        try:
+                            profile = enrichment_service.load_mapping(selected_shortcut)
+                            if profile is not None:
+                                val = False
+                                if isinstance(profile, dict):
+                                    val = profile.get("group_by_distributor", False)
+                                elif hasattr(profile, "get"):
+                                    res = profile.get("group_by_distributor", False)
+                                    if not isinstance(res, (pd.Series, pd.DataFrame)):
+                                        val = res
+                                
+                                st.session_state.group_state.group_by_distributor = bool(val)
+                        except Exception as profile_err:
+                            logger.error("Erro ao sincronizar regras de perfil: %s", profile_err)
+                            
+                        st.success(f"'{selected_shortcut}' carregado.")
+                        st.session_state[f"wiz_shortcut_{group.id}"] = "Grupos Salvos"
+                        time.sleep(0.5)
+                        st.rerun()
+        except Exception as e:
+            logger.error("Erro na interface de atalhos de grupos: %s", e)
 
-    # 1. Área de Cesta
+    # 1. Área de Busca (Foco Central)
+    with col_search:
+        search_index = build_search_index(available_clients)
+        search_term = st.text_input(
+            "Buscar cliente...", 
+            key=f"wiz_search_cli_{group.id}", 
+            placeholder="🔎 Digite o nome da empresa...",
+            label_visibility="collapsed"
+        )
+    
+    filtered_clients = filter_values(search_term, search_index) if search_term else []
+    unselected_clients = [c for c in filtered_clients if c not in group.clients]
+
+    if search_term and unselected_clients:
+        with st.container():
+            st.markdown("<div style='margin-top: -10px; margin-bottom: 15px;'>", unsafe_allow_html=True)
+            cols_batch = st.columns([0.6, 0.4])
+            with cols_batch[1]:
+                if len(unselected_clients) > 1:
+                    if st.button(f"Adicionar {len(unselected_clients)} variações", key=f"wiz_add_all_{group.id}", use_container_width=True):
+                        select_clients(group.id, group.clients + unselected_clients)
+                        st.rerun()
+            
+            st.markdown("<div style='max-height: 180px; overflow-y: auto; padding: 5px; border: 1px solid rgba(0,0,0,0.05); border-radius: 8px;'>", unsafe_allow_html=True)
+            for client in unselected_clients:
+                 if st.button(f"+ {client}", key=f"wiz_add_btn_{group.id}_{safe_key(client)}", use_container_width=True):
+                     update_group_clients(group.id, client, True)
+                     st.rerun()
+            st.markdown("</div></div>", unsafe_allow_html=True)
+    elif search_term and not unselected_clients:
+        st.info("Nenhum cliente novo encontrado.")
+
+    # 2. Cesta de Selecionados (Progressive Disclosure)
     if group.clients:
-        col_lbl, col_clr = st.columns([0.7, 0.3])
+        st.markdown("<hr style='opacity: 0.1; margin: 15px 0;'>", unsafe_allow_html=True)
+        col_lbl, col_clr, col_save_pop = st.columns([0.5, 0.25, 0.25])
+        
         with col_lbl:
-             st.markdown("<p style='font-size: 0.85rem; margin-bottom: 0;'><b>Na Planilha:</b></p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size: 0.9rem; margin-top: 5px;'><b>Selecionados:</b> {len(group.clients)} clientes</p>", unsafe_allow_html=True)
+        
         with col_clr:
-             if st.button("Limpar Tudo", key=f"wiz_btn_clear_{group.id}", width='stretch'):
-                  clear_group_clients(group.id)
-                  st.rerun()
+            if st.button("Limpar", key=f"wiz_btn_clear_{group.id}", use_container_width=True):
+                clear_group_clients(group.id)
+                st.rerun()
+        
+        with col_save_pop:
+            # NOVO: Popover para salvar grupo (Premium Minimalism)
+            if hasattr(st, "popover"):
+                with st.popover("💾 Salvar", use_container_width=True):
+                    st.markdown("<p style='font-size: 0.85rem; font-weight: bold;'>Novo Grupo de Clientes</p>", unsafe_allow_html=True)
+                    new_group_name = st.text_input("Nome do Grupo", key=f"wiz_new_grp_name_{group.id}", placeholder="Ex: Clientes Setor Norte...")
+                    if st.button("Salvar Agora", key=f"wiz_save_grp_btn_{group.id}", type="primary", use_container_width=True):
+                        if new_group_name:
+                            try:
+                                if save_client_group(new_group_name, group.clients):
+                                    st.success(f"Salvo!")
+                                    time.sleep(0.8)
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Erro: {e}")
+                        else:
+                            st.warning("Digite um nome.")
+            else:
+                with st.expander("💾 Salvar"):
+                    new_group_name = st.text_input("Nome do Grupo", key=f"wiz_new_grp_name_{group.id}")
+                    if st.button("Salvar", key=f"wiz_save_grp_btn_{group.id}"):
+                        save_client_group(new_group_name, group.clients)
+                        st.rerun()
 
+        # Pills para remoção rápida
         if hasattr(st, "pills"):
             selected_to_remove = st.pills(
                 "Remover",
@@ -137,100 +192,35 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                      update_group_clients(group.id, client, False)
                 st.rerun()
         else:
-             st.markdown(f"<div style='padding: 10px; background: rgba(0, 180, 216, 0.1); border-radius: 8px; border: 1px solid rgba(0, 180, 216, 0.2); font-size: 0.85rem; margin-bottom: 10px;'><b>Selecionados ({len(group.clients)}):</b> {', '.join(group.clients)}</div>", unsafe_allow_html=True)
-             if st.button("Limpar selecionados", key=f"wiz_clear_all_{group.id}"):
-                  clear_group_clients(group.id)
-                  st.rerun()
+             st.markdown(f"<div style='font-size: 0.8rem; color: #555;'>{', '.join(group.clients[:10])}{'...' if len(group.clients)>10 else ''}</div>", unsafe_allow_html=True)
 
-    st.markdown("<hr style='opacity: 0.2;'>", unsafe_allow_html=True)
-
-    # 2. Área de Busca
-    search_index = build_search_index(available_clients)
-    search_term = st.text_input(
-        "Buscar cliente para adicionar...", 
-        key=f"wiz_search_cli_{group.id}", 
-        placeholder="Digite parte do nome da empresa..."
-    )
-    
-    filtered_clients = filter_values(search_term, search_index) if search_term else []
-    unselected_clients = [c for c in filtered_clients if c not in group.clients]
-
-    if not search_term:
-        st.caption("Digite acima para encontrar e adicionar clientes.")
-    elif not unselected_clients:
-        st.info("Nenhuma variação nova encontrada para esta busca.")
-    else:
-        st.caption("Resultados da Busca (Clique para adicionar):")
-        if len(unselected_clients) > 1:
-             if st.button(f"Lote: Adicionar as {len(unselected_clients)} variações", key=f"wiz_add_all_{group.id}", type="secondary"):
-                  select_clients(group.id, group.clients + unselected_clients)
-                  st.rerun()
-                  
-        st.markdown("<div style='max-height: 180px; overflow-y: auto;'>", unsafe_allow_html=True)
-        for client in unselected_clients:
-             if st.button(f"+ {client}", key=f"wiz_add_btn_{group.id}_{safe_key(client)}", width='stretch'):
-                 update_group_clients(group.id, client, True)
-                 st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # --- NOVO: SALVAR SELEÇÃO ---
-    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-    with st.expander("Salvar esta seleção como um novo grupo"):
-        new_group_name = st.text_input("Nome do Novo Grupo", key=f"wiz_new_grp_name_{group.id}", placeholder="Ex: Clientes Setor Norte...")
-        if st.button("Confirmar e Salvar", key=f"wiz_save_grp_btn_{group.id}", type="secondary", use_container_width=True):
-            if not new_group_name:
-                st.error("Por favor, digite um nome para o grupo.")
-            elif not group.clients:
-                st.error("Selecione ao menos um cliente antes de salvar.")
-            else:
-                try:
-                    if save_client_group(new_group_name, group.clients):
-                        notify_completion(f"Grupo '{new_group_name}' salvo com sucesso!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Falha ao salvar no Firestore.")
-                except Exception as e:
-                    st.error(f"Erro ao salvar: {e}")
-    # ----------------------------
-
-    # Controles de Navegação (Fixo em baixo)
+    # Controles de Navegação
+    st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
     st.divider()
     _, col_next = st.columns([0.7, 0.3])
     with col_next:
-        if st.button("Próximo", type="primary", width='stretch', disabled=len(group.clients) == 0):
+        if st.button("Próximo →", type="primary", use_container_width=True, disabled=len(group.clients) == 0):
             st.session_state.wizard_step = 2
             st.rerun()
 
 def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> None:
-    """Pede os períodos e o nome final do arquivo."""
-    st.markdown("<h4 style='margin-bottom: 0;'>2. Selecione os Meses</h4>", unsafe_allow_html=True)
+    """Passo focado 100% em Tempo e Nome do Arquivo."""
+    st.markdown("<h4 style='margin-bottom: 10px;'>2. Defina o Período</h4>", unsafe_allow_html=True)
     
-    # Injetar CSS para destacar as pílulas (Borda e Sombra)
+    # Estilo das pílulas (Apple-like)
     st.markdown("""
         <style>
-        div[data-testid="stPills"] button {
-            border: 2px solid #00b4d8 !important;
-            box-shadow: 0 2px 4px rgba(0, 180, 216, 0.1);
-            transition: all 0.2s ease;
-        }
-        div[data-testid="stPills"] button[aria-pressed="true"] {
-            background-color: #00b4d8 !important;
-            color: white !important;
-            border-color: #0f4c75 !important;
-        }
+        div[data-testid="stPills"] button { border-radius: 12px !important; border: 1px solid #e0e0e0 !important; }
+        div[data-testid="stPills"] button[aria-pressed="true"] { background-color: #007aff !important; border: none !important; }
         </style>
     """, unsafe_allow_html=True)
 
-    options = available_periods
-    format_func = format_period_label
-    
     if hasattr(st, "pills"):
         new_periods = st.pills(
-            "Períodos",
-            options=options,
+            "Meses",
+            options=available_periods,
             default=group.periods,
-            format_func=format_func,
+            format_func=format_period_label,
             selection_mode="multi",
             key=f"wiz_pill_periods_{group.id}",
             label_visibility="collapsed"
@@ -240,58 +230,56 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
             st.rerun()
     else:
         new_periods = st.multiselect(
-            "Períodos", 
-            options=options,
+            "Selecione os meses", 
+            options=available_periods,
             default=group.periods,
-            format_func=format_func,
+            format_func=format_period_label,
             key=f"wiz_multi_periods_{group.id}"
         )
         if new_periods != group.periods:
             update_group_periods(group.id, new_periods)
             st.rerun()
 
-    st.markdown("<div style='margin-top: -15px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+    
+    # Nome do Arquivo com foco limpo
     new_name = st.text_input(
         "Nome do Arquivo Final",
         value=group.name,
         key=f"wiz_name_{group.id}",
-        placeholder="Memoria_Calculo_Final..."
+        placeholder="Ex: Memória de Cálculo Abril 2024",
+        help="Este será o nome do arquivo .xlsx gerado."
     )
     if new_name != group.name:
         update_group_name(group.id, new_name)
     
-    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-    st.session_state.group_state.group_by_distributor = st.toggle(
-        "Agrupar faturas por Distribuidora",
-        value=st.session_state.group_state.group_by_distributor,
-        key=f"wiz_distributor_{group.id}"
-    )
-    
     # Controles
+    st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
     st.divider()
     col_back, _, col_next = st.columns([0.3, 0.4, 0.3])
     with col_back:
-        if st.button("Anterior", width='stretch'):
+        if st.button("← Voltar", use_container_width=True):
             st.session_state.wizard_step = 1
             st.rerun()
     with col_next:
-        if st.button("Revisar", type="primary", width='stretch', disabled=len(group.periods) == 0):
+        if st.button("Revisar →", type="primary", use_container_width=True, disabled=len(group.periods) == 0):
             st.session_state.wizard_step = 3
             st.rerun()
 
 def _render_step_3_review(group: GroupState, orch: Any) -> None:
-    """Resumo e botão Final de Geração com opções de filtro de completude."""
-    st.markdown("<h4 style='margin-bottom: 0;'>3. Revisão Final</h4>", unsafe_allow_html=True)
+    """Resumo e botão Final de Geração. Esconde engrenagens em 'Avançado'."""
+    st.markdown("<h4 style='margin-bottom: 10px;'>3. Revisão & Geração</h4>", unsafe_allow_html=True)
     
+    # Card de Resumo Minimalista
     with st.container(border=True):
-        st.markdown(f"<p style='margin-bottom: 5px;'><b>Arquivo:</b> {group.name}.xlsx</p>", unsafe_allow_html=True)
-        st.markdown(f"<p style='margin-bottom: 5px;'><b>Clientes:</b> {len(group.clients)}</p>", unsafe_allow_html=True)
-        st.markdown(f"<p style='margin-bottom: 5px;'><b>Meses:</b> {len(group.periods)}</p>", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Clientes", len(group.clients))
+        c2.metric("Meses", len(group.periods))
         
         count = orch.count_filtered(group.clients, group.periods)
-        st.markdown(f"<p style='color: green; font-weight: bold;'>{count} registros encontrados</p>", unsafe_allow_html=True)
+        c3.metric("Faturas", count)
 
-    # Verificar dados incompletos
+    # --- TRATAMENTO DE INCOMPLETOS (Fim do Data Dump) ---
     incomplete_info = orch.check_incomplete_rows(group.clients, group.periods)
     incomplete_count = incomplete_info["registros_incompletos"]
     complete_count = incomplete_info["total_registros"] - incomplete_count
@@ -299,81 +287,99 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
     incomplete_filter = "all"  # default
     
     if incomplete_count > 0:
-        st.warning(f"**{incomplete_count}** faturas sem vencimento detectadas ({complete_count} completas).")
+        st.info(f"💡 **{incomplete_count}** faturas precisam de atenção (vencimento ausente).")
         
-        with st.expander("Ver detalhes das ausências"):
-            st.dataframe(incomplete_info["ucs_afetadas"], width='stretch')
+        col_det, col_mode = st.columns([0.4, 0.6])
+        with col_det:
+            if hasattr(st, "popover"):
+                with st.popover("🔍 Ver Detalhes", use_container_width=True):
+                    st.dataframe(incomplete_info["ucs_afetadas"], hide_index=True)
+            else:
+                with st.expander("Ver Detalhes"):
+                    st.dataframe(incomplete_info["ucs_afetadas"], hide_index=True)
         
-        # Opções de geração
-        st.markdown("<p style='font-weight: 600; margin-bottom: 5px;'>Como deseja gerar?</p>", unsafe_allow_html=True)
-        incomplete_filter = st.radio(
-            "Modo de geração",
-            options=["all", "complete_only", "incomplete_only"],
-            format_func=lambda x: {
-                "all": f"Tudo ({count} registros — inclui incompletos)",
-                "complete_only": f"Somente Completos ({complete_count} registros)",
-                "incomplete_only": f"Somente Incompletos ({incomplete_count} registros)"
-            }[x],
-            index=0,
-            key="wiz_incomplete_filter",
-            label_visibility="collapsed"
-        )
+        with col_mode:
+            incomplete_filter = st.selectbox(
+                "Filtrar:",
+                options=["all", "complete_only", "incomplete_only"],
+                format_func=lambda x: {
+                    "all": "Gerar Tudo",
+                    "complete_only": "Somente Completos",
+                    "incomplete_only": "Somente Incompletos"
+                }[x],
+                label_visibility="collapsed",
+                key="wiz_incomplete_filter"
+            )
 
-    st.divider()
+    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
-    # Perfil de Enriquecimento
-    st.markdown("<p style='font-weight: 600; margin-bottom: 5px;'>Enriquecimento de Dados (Opcional)</p>", unsafe_allow_html=True)
-    profiles = enrichment_service.list_profiles()
-    selected_enrichment = st.selectbox(
-        "Selecione um perfil mapeado para incluir códigos internos",
-        options=["Nenhum"] + profiles,
-        index=0,
-        key=f"wiz_enrichment_{group.id}",
-        help="Se selecionado, o sistema fará o merge dos dados do perfil com a base usando o No. UC antes de gerar o Excel."
-    )
-    
-    enrichment_df = None
-    if selected_enrichment != "Nenhum":
-         enrichment_df = enrichment_service.load_mapping(selected_enrichment)
-         if enrichment_df is not None:
-              st.success(f"Enriquecimento aplicado usando o perfil: **{selected_enrichment}**")
+    # --- BOTÃO PRINCIPAL (O Caminho Feliz) ---
+    if st.button("Gerar Memória de Cálculo", type="primary", use_container_width=True, icon="✨", height=60):
+        # Lógica de carregamento de enriquecimento (agora dentro do fluxo de geração)
+        enrichment_df = None
+        selected_profile = st.session_state.get(f"wiz_enrichment_{group.id}", "Nenhum")
+        if selected_profile != "Nenhum":
+             enrichment_df = enrichment_service.load_mapping(selected_profile)
 
-    # Botão de geração
-    if st.button("Gerar Planilha Agora", type="primary", width='stretch', icon="⚙️"):
         start_time = time.time()
-        with st.spinner("Construindo planilha..."):
+        with st.spinner("Refinando dados e construindo Excel..."):
             excel_data = orch.generate(
                 group.clients, 
                 group.periods, 
                 incomplete_filter=incomplete_filter,
-                group_by_distributor=st.session_state.group_state.group_by_distributor,
+                group_by_distributor=group.group_by_distributor,
                 enrichment_df=enrichment_df
             )
             
         elapsed = time.time() - start_time
         if excel_data:
             filename = f"{sanitize_filename(group.name)}.xlsx"
-            st.success(f"Arquivo gerado em {elapsed:.1f} segundos.")
+            st.toast(f"Planilha pronta em {elapsed:.1f}s!", icon="✅")
             st.download_button(
-                label="Baixar Excel (.xlsx)",
-                icon="📥",
+                label="📥 Baixar Arquivo Excel",
                 data=excel_data,
                 file_name=filename,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                width='stretch',
+                use_container_width=True,
                 type="primary"
             )
         else:
-            st.error("Nenhum dado encontrado para gerar a planilha.")
+            st.error("Erro na geração: Verifique os critérios selecionados.")
 
+    # --- OPÇÕES AVANÇADAS (As Engrenagens Escondidas) ---
+    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+    with st.expander("⚙️ Opções Avançadas"):
+        st.markdown("<p style='font-size: 0.85rem; color: #666;'>Configurações técnicas para usuários experientes.</p>", unsafe_allow_html=True)
+        
+        # Mapeamento / Enriquecimento
+        profiles = enrichment_service.list_profiles()
+        st.selectbox(
+            "Perfil de Enriquecimento (Mapeamento UC)",
+            options=["Nenhum"] + profiles,
+            index=0,
+            key=f"wiz_enrichment_{group.id}",
+            help="Faz o merge com códigos internos baseados na UC."
+        )
+        
+        # Toggle de Distribuidora
+        group.group_by_distributor = st.toggle(
+            "Agrupar faturas por Distribuidora",
+            value=group.group_by_distributor,
+            key=f"wiz_distributor_toggle_{group.id}",
+            help="Cria uma aba ou agrupamento por distribuidora de energia."
+        )
+        
+        st.checkbox("Habilitar modo de depuração (Logs detalhados)", value=False)
+
+    # Footer de Navegação
     st.divider()
-    col_back, _, col_restart = st.columns([0.3, 0.4, 0.3])
+    col_back, col_restart = st.columns([0.5, 0.5])
     with col_back:
-        if st.button("⬅️ Voltar", width='stretch'):
+        if st.button("← Ajustar Período", use_container_width=True):
             st.session_state.wizard_step = 2
             st.rerun()
     with col_restart:
-        if st.button("Limpar e Iniciar Novo", width='stretch'):
+        if st.button("Reiniciar Wizard", use_container_width=True, help="Limpa tudo e volta ao passo 1"):
             clear_group_clients(group.id)
             update_group_periods(group.id, [])
             st.session_state.wizard_step = 1
