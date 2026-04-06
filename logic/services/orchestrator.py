@@ -277,9 +277,11 @@ class Orchestrator:
 
         filtered_df = self.reader.filter_data(selected_clients, selected_periods)
 
+        actual_enrichment_cols = []
         if enrichment_df is not None and not enrichment_df.empty:
             # Segurança: Evitar que UCs duplicadas no mapeamento multipliquem as linhas na planilha final
             clean_enrichment = enrichment_df.drop_duplicates(subset=[ENRICHMENT_KEY], keep='last')
+            actual_enrichment_cols = [c for c in clean_enrichment.columns if c != ENRICHMENT_KEY and c not in COLUMN_MAPPING]
             logger.info("Aplicando enriquecimento (left merge) em %d registros.", len(filtered_df))
             filtered_df = pd.merge(filtered_df, clean_enrichment, on=ENRICHMENT_KEY, how='left')
             logger.info("Enriquecimento de dados aplicado (%d novas colunas).", len(enrichment_df.columns) - 1)
@@ -312,8 +314,8 @@ class Orchestrator:
             if col not in processed_df.columns:
                 processed_df[col] = pd.NA
         
-        # 2. Identificar colunas extras vindas do enrichment_df (que não estão no mapping original)
-        extra_cols = [c for c in processed_df.columns if c not in legacy_keys and c != PARENT_ROW_FLAG]
+        # 2. Identificar colunas extras vindas estritamente do enrichment_df
+        extra_cols = [c for c in actual_enrichment_cols if c in processed_df.columns]
         
         # 3. Reordenar e incluir colunas extras no final do DataFrame
         final_columns = legacy_keys + extra_cols
