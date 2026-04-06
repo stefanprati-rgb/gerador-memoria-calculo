@@ -71,8 +71,8 @@ class TestAgrupamento:
         
         result = orch._apply_grouping(filtered)
 
-        # Deve ter criado 1 linha extra (A Fatura Pai)
-        assert len(result) == 3
+        # Deve ter criado 2 linhas extras: 1 Fatura Pai + 1 Separador no final do grupo
+        assert len(result) == 4
         
         # A primeira linha deve ser a Fatura Pai
         parent_row = result.iloc[0]
@@ -85,44 +85,50 @@ class TestAgrupamento:
         # As linhas filhas devem vir depois e não ter a flag
         assert result.iloc[1][PARENT_ROW_FLAG] == False
         assert result.iloc[2][PARENT_ROW_FLAG] == False
+        
+        # A última linha deve ser o separador
+        from logic.core.mapping import SEPARATOR_ROW_FLAG
+        assert result.iloc[3][SEPARATOR_ROW_FLAG] == True
 
     def test_nao_marca_sem_flag(self, sample_base_xlsx, sample_template_xlsx):
-        """Clientes sem Excecao Fat. = 'Agrupamento' não devem gerar Fatura Pai."""
+        """Clientes sem Excecao Fat. = 'Agrupamento' não devem gerar Fatura Pai, mas ganham separador."""
         orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
-        filtered = orch.reader.filter_data(["Cliente Alpha"], orch.get_available_periods())
+        filtered = orch.reader.filter_data(["Cliente Alpha"], orch.get_available_periods()) # 2 registros
 
         result = orch._apply_grouping(filtered)
 
         # Nenhuma Fatura Pai gerada
         parent_rows = result[result[PARENT_ROW_FLAG] == True]
         assert len(parent_rows) == 0
-        assert len(result) == len(filtered)  # O total de linhas permanece igual
+        # O total de linhas agora é dados + separadores (2 grupos de 1 UC cada)
+        assert len(result) == len(filtered) + 2
 
     def test_uc_solitaria_com_agrupamento_marcada(self, sample_base_xlsx, sample_template_xlsx):
-        """UC solitária com 'Agrupamento' NÃO deve gerar Fatura Pai (grupos exigem > 1 UC)."""
+        """UC solitária com 'Agrupamento' NÃO deve gerar Fatura Pai, mas ganha separador."""
         orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
         filtered = orch.reader.filter_data(["Cliente Delta"], orch.get_available_periods())
 
         result = orch._apply_grouping(filtered)
 
         parent_rows = result[result[PARENT_ROW_FLAG] == True]
-        assert len(parent_rows) == 0  # Antes gerava 1, agora exige len > 1
-        assert len(result) == 1 # Apenas a UC original
+        assert len(parent_rows) == 0
+        assert len(result) == 2 # 1 UC original + 1 Separador
 
     def test_misto_agrupamento_e_normal(self, sample_base_xlsx, sample_template_xlsx):
-        """Clientes com e sem agrupamento processados juntos. Grupos len=1 ignorados."""
+        """Clientes com e sem agrupamento processados juntos. Grupos len=1 ignorados para Pai, mas ganham separador."""
         orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
         all_clients = orch.get_available_clients()
         all_periods = orch.get_available_periods()
         filtered = orch.reader.filter_data(all_clients, all_periods)
 
-        original_len = len(filtered) # 6
+        original_len = len(filtered) # 6 registros
         result = orch._apply_grouping(filtered)
 
-        # Criou Fatura Pai APENAS para Gamma (2 UCs). Delta tem 1 UC (ignorado).
+        # Criou Fatura Pai APENAS para Gamma (1 grupo). 
+        # Total de grupos: Alpha(2), Beta(1), Gamma(1), Delta(1) = 5 grupos
         parent_rows = result[result[PARENT_ROW_FLAG] == True]
         assert len(parent_rows) == 1
-        assert len(result) == original_len + 1
+        assert len(result) == original_len + 1 + 5 # Dados + 1 Pai + 5 Separadores = 12 total
 
 
 class TestGenerateMultiple:

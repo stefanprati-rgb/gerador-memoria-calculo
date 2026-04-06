@@ -21,6 +21,7 @@ from logic.core.mapping import (
     CLASSIFICATION_LABEL_REGRA,
     CLASSIFICATION_COL,
     ENRICHMENT_KEY,
+    SEPARATOR_ROW_FLAG,
 )
 import pandas as pd
 from typing import Any, List, Optional, Dict
@@ -99,7 +100,8 @@ class Orchestrator:
         # Garantir que a flag existe inicialmente como False nas filhas
         df = df.copy()
         df[PARENT_ROW_FLAG] = False
-
+        df[SEPARATOR_ROW_FLAG] = False
+        
         if "Referencia" not in df.columns or CLIENT_COLUMN not in df.columns:
             logger.warning("Faltam colunas de agrupamento. Seguindo sem agregar faturas.")
             return df
@@ -197,6 +199,11 @@ class Orchestrator:
                 parent_count += 1
             else:
                 grouped_dfs.append(group_df)
+            
+            # Adicionar Linha Separadora (Fantasma) em branco após o grupo
+            # Criamos uma linha com todas as colunas vazias, exceto o flag SEPARATOR_ROW_FLAG
+            separator_row = pd.DataFrame([{SEPARATOR_ROW_FLAG: True}])
+            grouped_dfs.append(separator_row)
 
         if grouped_dfs:
             df = pd.concat(grouped_dfs, ignore_index=True)
@@ -319,7 +326,7 @@ class Orchestrator:
         
         # 3. Reordenar e incluir colunas extras no final do DataFrame
         final_columns = legacy_keys + extra_cols
-        processed_df = processed_df.reindex(columns=final_columns + [PARENT_ROW_FLAG])
+        processed_df = processed_df.reindex(columns=final_columns + [PARENT_ROW_FLAG, SEPARATOR_ROW_FLAG])
         
         # 4. Construir o mapping completo (Orderly) preservando a ordem do Excel
         from collections import OrderedDict

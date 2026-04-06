@@ -19,6 +19,7 @@ from logic.core.mapping import (
     PARENT_ROW_FLAG,
     OPTIONAL_BASE_COLUMNS,
     ENRICHMENT_KEY,
+    SEPARATOR_ROW_FLAG,
 )
 
 import logging
@@ -323,9 +324,12 @@ class TemplateExcelWriter:
 
         for _, row in data_to_insert.iterrows():
             is_parent = bool(row.get(PARENT_ROW_FLAG, False))
+            is_separator = bool(row.get(SEPARATOR_ROW_FLAG, False))
 
             for base_col, col_idx in template_col_to_idx.items():
-                if base_col in row:
+                val = None
+                
+                if not is_separator and base_col in row:
                     val = row[base_col]
 
                     # Tratar NaNs
@@ -344,34 +348,35 @@ class TemplateExcelWriter:
                     else:
                         val = None
 
-                    new_cell = ws.cell(row=current_row, column=col_idx, value=val)
+                new_cell = ws.cell(row=current_row, column=col_idx, value=val)
 
-                    # Formato numérico para moeda
-                    if base_col in self.CURRENCY_COLUMNS:
-                        new_cell.number_format = currency_format
+                # Formato numérico para moeda
+                if base_col in self.CURRENCY_COLUMNS:
+                    new_cell.number_format = currency_format
 
-                    if is_parent:
-                        # Formatação especial para Fatura Pai
-                        new_cell.font = parent_font
-                        new_cell.fill = parent_fill
-                    elif current_row > 2:
-                        # Copiar a formatação da linha 2 (referência) para as linhas normais
-                        ref_cell = ws.cell(row=2, column=col_idx)
-                        if ref_cell.has_style:
-                            new_cell.font = copy(ref_cell.font)
-                            new_cell.border = copy(ref_cell.border)
-                            # Removida a cópia do preenchimento (fill) para evitar propagação de cores
-                            if base_col not in self.CURRENCY_COLUMNS:
-                                new_cell.number_format = copy(ref_cell.number_format)
-                            new_cell.protection = copy(ref_cell.protection)
-                            new_cell.alignment = copy(ref_cell.alignment)
+                if is_parent:
+                    # Formatação especial para Fatura Pai
+                    new_cell.font = parent_font
+                    new_cell.fill = parent_fill
+                elif current_row > 2:
+                    # Copiar a formatação da linha 2 (referência) para as linhas normais (e separadoras)
+                    ref_cell = ws.cell(row=2, column=col_idx)
+                    if ref_cell.has_style:
+                        new_cell.font = copy(ref_cell.font)
+                        new_cell.border = copy(ref_cell.border)
+                        # Removida a cópia do preenchimento (fill) para evitar propagação de cores
+                        if base_col not in self.CURRENCY_COLUMNS:
+                            new_cell.number_format = copy(ref_cell.number_format)
+                        new_cell.protection = copy(ref_cell.protection)
+                        new_cell.alignment = copy(ref_cell.alignment)
 
-                    # Garantir fundo limpo para todas as linhas que não são Fatura Pai
-                    if not is_parent:
-                        new_cell.fill = openpyxl.styles.PatternFill(fill_type=None)
+                # Garantir fundo limpo para todas as linhas que não são Fatura Pai
+                if not is_parent:
+                    new_cell.fill = openpyxl.styles.PatternFill(fill_type=None)
 
-                    # Destaque de ausência (apenas na fonte, fundo permanece limpo)
-                    # Aplica-se a qualquer linha (pai ou filha) que tenha campos críticos vazios
+                # Destaque de ausência (apenas na fonte, fundo permanece limpo)
+                # Não aplica o realce (bypass) para linhas separadoras
+                if not is_separator:
                     is_empty = val is None or str(val).strip().lower() in ["", "nan", "nat", "none"]
                     if is_empty and base_col in {"Vencimento", "Status Pos-Faturamento"}:
                         new_cell.font = missing_font
