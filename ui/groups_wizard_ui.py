@@ -314,7 +314,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
     # --- BOTÃO PRINCIPAL (O Caminho Feliz) ---
-    if st.button("Gerar Memória de Cálculo", type="primary", use_container_width=True, icon="✨", height=60):
+    if st.button("Gerar Memória de Cálculo", type="primary", use_container_width=True, icon="✨"):
         # Lógica de carregamento de enriquecimento (agora dentro do fluxo de geração)
         enrichment_df = None
         selected_profile = st.session_state.get(f"wiz_enrichment_{group.id}", "Nenhum")
