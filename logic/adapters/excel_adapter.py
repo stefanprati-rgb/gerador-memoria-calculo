@@ -375,7 +375,7 @@ class TemplateExcelWriter:
                     # Formatação especial para Fatura Pai
                     new_cell.font = parent_font
                     new_cell.fill = parent_fill
-                elif current_row > 2:
+                elif not is_parent:
                     # Lógica de Herança de Estilo:
                     # Para colunas que não existem no template físico (ex: Classificação/Enriquecimento),
                     # usamos a Coluna 1 do template como modelo de estilo "seguro" (fontes, bordas, alinhamento).
