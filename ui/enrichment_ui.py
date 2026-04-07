@@ -144,6 +144,13 @@ def _render_tab_metadata_registration(orchestrator):
     
     current_mapping = st.session_state.get("mapping_df", pd.DataFrame(columns=[ENRICHMENT_KEY, CLIENT_COLUMN]))
     
+    # Forçar colunas críticas para string para evitar erro de ColumnDataKind.FLOAT
+    cols_to_fix = [ENRICHMENT_KEY, CLIENT_COLUMN, ACCOUNT_NUMBER_COL]
+    for col in cols_to_fix:
+        if col in current_mapping.columns:
+            # Converter para string e limpar representações de nulos (nan, <NA>, etc)
+            current_mapping[col] = current_mapping[col].astype(str).replace(["nan", "None", "NaN", "<NA>", "nat", "NaT"], "")
+    
     edited_df = st.data_editor(
         current_mapping,
         num_rows="dynamic",
