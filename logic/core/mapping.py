@@ -31,6 +31,9 @@ HIERARCHY_PARENT_VALUE = "Y"
 # Chave usada para enriquecimento/vínculo de dados externos
 ENRICHMENT_KEY = "No. UC"
 
+# Coluna para número da conta (Gestão de Cobrança)
+ACCOUNT_NUMBER_COL = "Número da conta"
+
 # Colunas financeiras que devem ser SOMADAS na linha "Fatura Pai"
 SUM_COLUMNS = [
     "Cred. Consumido Raizen",
@@ -67,6 +70,7 @@ COLUMN_MAPPING = {
     # 'Coluna na base Balanço Energético': 'Coluna no destino'
     "Referencia": "Mês de Referência",
     "No. UC": "Instalação (UC)",
+    ACCOUNT_NUMBER_COL: "Nº Conta",
     "CPF/CNPJ": "CPF/CNPJ",
     "Razao Social": "Cliente (Razão Social)",
     "Distribuidora": "Distribuidora",
@@ -90,6 +94,7 @@ CLIENT_COLUMN = "Razao Social"
 OPTIONAL_BASE_COLUMNS = [
     "Status Pos-Faturamento",
     "Vencimento",
+    ACCOUNT_NUMBER_COL,
     CLASSIFICATION_COL,  # Coluna derivada — calculada pelo orchestrator, jamais presente no Excel fonte
 ]
 

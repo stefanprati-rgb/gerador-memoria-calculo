@@ -21,6 +21,7 @@ from logic.core.mapping import (
     CLASSIFICATION_LABEL_REGRA,
     CLASSIFICATION_COL,
     ENRICHMENT_KEY,
+    ACCOUNT_NUMBER_COL,
     SEPARATOR_ROW_FLAG,
 )
 import pandas as pd
@@ -121,9 +122,9 @@ class Orchestrator:
             # Comportamento padrão: Agrupar considerando Referência e Razão Social
             keys = ["Referencia", CLIENT_COLUMN]
         
-        # Sanitização rigorosa de tipos para chaves de identificação (UCs e IBM)
+        # Sanitização rigorosa de tipos para chaves de identificação (UCs, IBM e Contas)
         # Excel costuma carregar números como float (1.0), o que quebra o de-para com strings ("1")
-        for col in [ENRICHMENT_KEY, HIERARCHY_KEY_COL, GROUPING_IBM_COL]:
+        for col in [ENRICHMENT_KEY, HIERARCHY_KEY_COL, GROUPING_IBM_COL, ACCOUNT_NUMBER_COL]:
             if col in df.columns:
                 df[col] = (
                     df[col]

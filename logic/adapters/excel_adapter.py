@@ -19,6 +19,7 @@ from logic.core.mapping import (
     PARENT_ROW_FLAG,
     OPTIONAL_BASE_COLUMNS,
     ENRICHMENT_KEY,
+    ACCOUNT_NUMBER_COL,
     SEPARATOR_ROW_FLAG,
     CLASSIFICATION_COL,
 )
@@ -194,6 +195,9 @@ class TemplateExcelWriter:
     # Colunas da base que contêm CPF/CNPJ
     DOCUMENT_COLUMNS = {"CPF/CNPJ"}
 
+    # Colunas que devem ser tratadas como texto puro
+    TEXT_COLUMNS = {ACCOUNT_NUMBER_COL, ENRICHMENT_KEY}
+
     # Mapeamento reverso para localizar colunas no template físico (mc.xlsx) que ainda usam nomes antigos
     LEGACY_HEADER_MAP = {
         "Data  Ref": "Referencia",
@@ -209,6 +213,8 @@ class TemplateExcelWriter:
         "Custo com GD R$": "Custo c/ GD",
         "Custo sem GD R$": "Custo s/ GD",
         "Economia (R$)": "Ganho total Padrão",
+        "Nº Conta": ACCOUNT_NUMBER_COL,
+        "Número da conta": ACCOUNT_NUMBER_COL,
     }
 
     def __init__(self, template_path_or_buffer: Any):
@@ -359,6 +365,11 @@ class TemplateExcelWriter:
                 # Formato numérico para moeda
                 if base_col in self.CURRENCY_COLUMNS:
                     new_cell.number_format = currency_format
+                elif base_col in self.TEXT_COLUMNS:
+                    new_cell.number_format = '@'
+                    # Forçar valor como string se já foi lido como número
+                    if val is not None:
+                        new_cell.value = str(val).strip()
 
                 if is_parent:
                     # Formatação especial para Fatura Pai

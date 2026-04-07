@@ -112,8 +112,8 @@ def _render_step_1_upload():
     st.divider()
     _, col_next = st.columns([0.7, 0.3])
     with col_next:
-        can_advance = (st.session_state.balanco_df is not None) or (st.session_state.cobranca_df is not None)
-        if st.button("Próximo", type="primary", width='stretch', disabled=not can_advance):
+        # Ajuste 2: Removendo restrição para permitir configuração manual de perfil sem upload
+        if st.button("Próximo", type="primary", width='stretch'):
             st.session_state.enrichment_step = 2
             st.rerun()
 
@@ -210,13 +210,14 @@ def _render_step_2_config(orchestrator):
                 st.success(f"Coluna '{new_col_name}' adicionada.")
                 st.rerun()
 
+    # Ajuste 3: Garantindo editor dinâmico e ID habilitado (já estava, reforçando suporte a colagem)
     edited_df = st.data_editor(
         current_mapping,
         num_rows="dynamic",
-        width='stretch',
+        use_container_width=True,
         hide_index=True,
         column_config={
-            ENRICHMENT_KEY: st.column_config.TextColumn("No. UC (Identificador)", disabled=False),
+            ENRICHMENT_KEY: st.column_config.TextColumn("No. UC (Identificador)", disabled=False, required=True),
             CLIENT_COLUMN: st.column_config.TextColumn("Nome Cliente", disabled=False),
         },
         key=f"editor_{active_profile}"
@@ -371,68 +372,70 @@ def _render_tab_manage_base():
     with st.spinner("Buscando dados no Firestore..."):
         base_df = _get_cached_enrichment_data()
     
+    # Ajuste 1: Se a base estiver vazia, inicializar estrutura mínima para permitir adição manual
     if base_df.empty:
-        st.info("A base de enriquecimento (uc_enrichment) está vazia.")
-    else:
-        # Garantir No. UC na primeira coluna
-        cols = [ENRICHMENT_KEY] + [c for c in base_df.columns if c != ENRICHMENT_KEY]
-        base_df = base_df[cols]
+        base_df = pd.DataFrame(columns=[ENRICHMENT_KEY, "Centro de Custo", "Grupo"])
+        st.info("A base de enriquecimento está vazia. Use o botão '+' abaixo para cadastrar manualmente.")
+    
+    # Garantir No. UC na primeira coluna
+    cols = [ENRICHMENT_KEY] + [c for c in base_df.columns if c != ENRICHMENT_KEY]
+    base_df = base_df[cols]
+    
+    st.markdown("---")
+    
+    edited_df = st.data_editor(
+        base_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
+        key="enrichment_batch_editor",
+        column_config={
+            ENRICHMENT_KEY: st.column_config.TextColumn(f"Identificador ({ENRICHMENT_KEY})", disabled=False, required=True),
+        }
+    )
+    
+    if st.button("💾 Salvar Alterações na Base", type="primary", use_container_width=True):
+        changes = st.session_state.get("enrichment_batch_editor", {})
         
-        st.markdown("---")
+        has_changes = False
         
-        edited_df = st.data_editor(
-            base_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            hide_index=True,
-            key="enrichment_batch_editor",
-            column_config={
-                ENRICHMENT_KEY: st.column_config.TextColumn(f"Identificador ({ENRICHMENT_KEY})", disabled=False),
-            }
-        )
+        # 1. Processar Deleções (Captura segura de IDs via base_df do cache)
+        deleted_indices = changes.get("deleted_rows", [])
+        if deleted_indices:
+            ucs_to_delete = base_df.iloc[deleted_indices][ENRICHMENT_KEY].astype(str).tolist()
+            if enrichment_service.delete_enrichment_data(ucs_to_delete):
+                has_changes = True
+                st.toast(f"🗑️ {len(ucs_to_delete)} registros marcados para exclusão.")
         
-        if st.button("💾 Salvar Alterações na Base", type="primary", use_container_width=True):
-            changes = st.session_state.get("enrichment_batch_editor", {})
+        # 2. Processar Edições e Adições
+        edited_rows_raw = changes.get("edited_rows", {}) # {index: {col: val}}
+        added_rows = changes.get("added_rows", [])
+        
+        rows_to_save = []
+        
+        # Edições
+        for idx_str, mods in edited_rows_raw.items():
+            idx = int(idx_str)
+            # Pegar a linha completa do edited_df (que já contém as modificações)
+            row_full = edited_df.iloc[idx].to_dict()
+            rows_to_save.append(row_full)
             
-            has_changes = False
-            
-            # 1. Processar Deleções (Captura segura de IDs via base_df do cache)
-            deleted_indices = changes.get("deleted_rows", [])
-            if deleted_indices:
-                ucs_to_delete = base_df.iloc[deleted_indices][ENRICHMENT_KEY].astype(str).tolist()
-                if enrichment_service.delete_enrichment_data(ucs_to_delete):
-                    has_changes = True
-                    st.toast(f"🗑️ {len(ucs_to_delete)} registros marcados para exclusão.")
-            
-            # 2. Processar Edições e Adições
-            edited_rows_raw = changes.get("edited_rows", {}) # {index: {col: val}}
-            added_rows = changes.get("added_rows", [])
-            
-            rows_to_save = []
-            
-            # Edições
-            for idx_str, mods in edited_rows_raw.items():
-                idx = int(idx_str)
-                # Pegar a linha completa do edited_df (que já contém as modificações)
-                row_full = edited_df.iloc[idx].to_dict()
-                rows_to_save.append(row_full)
-                
-            # Adições (Note: No. UC estará vazio se desabilitado, o que é um problema)
-            for row in added_rows:
-                if ENRICHMENT_KEY in row and str(row[ENRICHMENT_KEY]).strip():
-                    rows_to_save.append(row)
-                else:
-                    st.warning("Uma nova linha foi ignorada por estar sem 'No. UC'.")
-
-            if rows_to_save:
-                df_to_save = pd.DataFrame(rows_to_save)
-                if enrichment_service.save_enrichment_data(df_to_save):
-                    has_changes = True
-            
-            if has_changes:
-                st.cache_data.clear() # Limpa o cache para forçar recarga dos dados atualizados
-                st.toast("Base atualizada com sucesso!", icon="✅")
-                time.sleep(1)
-                st.rerun()
+        # Adições (Note: No. UC estará vazio se desabilitado, o que é um problema)
+        for row in added_rows:
+            if ENRICHMENT_KEY in row and str(row[ENRICHMENT_KEY]).strip():
+                rows_to_save.append(row)
             else:
-                st.warning("Nenhuma alteração detectada para salvar.")
+                st.warning("Uma nova linha foi ignorada por estar sem 'No. UC'.")
+
+        if rows_to_save:
+            df_to_save = pd.DataFrame(rows_to_save)
+            if enrichment_service.save_enrichment_data(df_to_save):
+                has_changes = True
+        
+        if has_changes:
+            st.cache_data.clear() # Limpa o cache para forçar recarga dos dados atualizados
+            st.toast("Base atualizada com sucesso!", icon="✅")
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.warning("Nenhuma alteração detectada para salvar.")
