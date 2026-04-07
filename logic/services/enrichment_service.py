@@ -47,9 +47,13 @@ def save_mapping(profile_name: str, df: pd.DataFrame) -> bool:
             return False
             
         adapter = _get_adapter()
+        if not adapter:
+            logger.error("Firestore não disponível para salvar mapping. Adapter nulo.")
+            return False
+            
         db = adapter._get_db()
-        if not adapter or not db:
-            logger.error("Firestore não disponível para salvar mapping.")
+        if not db:
+            logger.error("Firestore DB não disponível para salvar mapping.")
             return False
             
         if ENRICHMENT_KEY not in df.columns:
@@ -79,8 +83,12 @@ def load_mapping(profile_name: str) -> Union[pd.DataFrame, Dict, None]:
     
     # 1. Tentar carregar do Firestore
     try:
-        db = adapter._get_db()
-        if adapter and db:
+        if adapter:
+            db = adapter._get_db()
+        else:
+            db = None
+            
+        if db:
             doc_ref = db.collection(COLLECTION_NAME).document(profile_name)
             doc = doc_ref.get()
             if doc.exists:
@@ -131,11 +139,12 @@ def list_profiles() -> List[str]:
     # 1. Buscar do Firestore
     try:
         adapter = _get_adapter()
-        db = adapter._get_db()
-        if adapter and db:
-            docs = db.collection(COLLECTION_NAME).list_documents()
-            for doc in docs:
-                profiles.add(doc.id)
+        if adapter:
+            db = adapter._get_db()
+            if db:
+                docs = db.collection(COLLECTION_NAME).list_documents()
+                for doc in docs:
+                    profiles.add(doc.id)
     except Exception as e:
         logger.error("Erro ao listar perfis no Firestore: %s", str(e))
     
@@ -157,12 +166,13 @@ def delete_profile(profile_name: str) -> bool:
     try:
         # 1. Excluir do Firestore
         adapter = _get_adapter()
-        db = adapter._get_db()
-        if adapter and db:
-             doc_ref = db.collection(COLLECTION_NAME).document(profile_name)
-             if doc_ref.get().exists:
-                  doc_ref.delete()
-                  logger.info("Perfil '%s' excluído do Firestore.", profile_name)
+        if adapter:
+             db = adapter._get_db()
+             if db:
+                  doc_ref = db.collection(COLLECTION_NAME).document(profile_name)
+                  if doc_ref.get().exists:
+                       doc_ref.delete()
+                       logger.info("Perfil '%s' excluído do Firestore.", profile_name)
         
         # 2. Excluir do Local (Faxina)
         clean_name = profile_name.replace(".json", "").strip()
@@ -185,8 +195,12 @@ def get_all_enrichment_data() -> pd.DataFrame:
     """
     try:
         adapter = _get_adapter()
+        if not adapter:
+            logger.error("Adapter Firebase não inicializado.")
+            return pd.DataFrame(columns=[ENRICHMENT_KEY])
+            
         db = adapter._get_db()
-        if not adapter or not db:
+        if not db:
             return pd.DataFrame(columns=[ENRICHMENT_KEY])
 
         # Acessar a coleção específica uc_enrichment
@@ -215,8 +229,12 @@ def save_enrichment_data(df: pd.DataFrame, uc_col: str = ENRICHMENT_KEY) -> bool
             return True
             
         adapter = _get_adapter()
+        if not adapter:
+            logger.error("Firebase adapter not initialized.")
+            return False
+            
         db = adapter._get_db()
-        if not adapter or not db:
+        if not db:
             return False
 
         if uc_col not in df.columns:
@@ -251,8 +269,12 @@ def delete_enrichment_data(ucs: List[str]) -> bool:
             return True
             
         adapter = _get_adapter()
+        if not adapter:
+            logger.error("Firebase adapter not initialized.")
+            return False
+            
         db = adapter._get_db()
-        if not adapter or not db:
+        if not db:
             return False
 
         for uc_id in ucs:

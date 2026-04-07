@@ -6,6 +6,11 @@ from logic.services import enrichment_service
 from logic.core.mapping import ENRICHMENT_KEY, CLIENT_COLUMN
 import logging
 
+@st.cache_data(ttl=60, show_spinner=False)
+def _get_cached_enrichment_data():
+    """Busca dados de enriquecimento com cache de 60s."""
+    return enrichment_service.get_all_enrichment_data()
+
 logger = logging.getLogger(__name__)
 
 def render_enrichment_wizard(orchestrator):
@@ -363,7 +368,8 @@ def _render_tab_manage_base():
     st.markdown("#### 🗄️ Base Consolidada de UCs Enriquecidas")
     st.write("Visualize, edite ou remova UCs da base central do Firestore. Útil para encerramento de contratos.")
     
-    base_df = enrichment_service.get_all_enrichment_data()
+    with st.spinner("Buscando dados no Firestore..."):
+        base_df = _get_cached_enrichment_data()
     
     if base_df.empty:
         st.info("A base de enriquecimento (uc_enrichment) está vazia.")
@@ -381,9 +387,8 @@ def _render_tab_manage_base():
             hide_index=True,
             key="enrichment_batch_editor",
             column_config={
-                ENRICHMENT_KEY: st.column_config.TextColumn(f"Identificador ({ENRICHMENT_KEY})", disabled=True),
-            },
-            disabled=[ENRICHMENT_KEY]
+                ENRICHMENT_KEY: st.column_config.TextColumn(f"Identificador ({ENRICHMENT_KEY})", disabled=False),
+            }
         )
         
         if st.button("💾 Salvar Alterações na Base", type="primary", use_container_width=True):
@@ -391,12 +396,13 @@ def _render_tab_manage_base():
             
             has_changes = False
             
-            # 1. Processar Deleções
+            # 1. Processar Deleções (Captura segura de IDs via base_df do cache)
             deleted_indices = changes.get("deleted_rows", [])
             if deleted_indices:
                 ucs_to_delete = base_df.iloc[deleted_indices][ENRICHMENT_KEY].astype(str).tolist()
                 if enrichment_service.delete_enrichment_data(ucs_to_delete):
                     has_changes = True
+                    st.toast(f"🗑️ {len(ucs_to_delete)} registros marcados para exclusão.")
             
             # 2. Processar Edições e Adições
             edited_rows_raw = changes.get("edited_rows", {}) # {index: {col: val}}
@@ -424,6 +430,7 @@ def _render_tab_manage_base():
                     has_changes = True
             
             if has_changes:
+                st.cache_data.clear() # Limpa o cache para forçar recarga dos dados atualizados
                 st.toast("Base atualizada com sucesso!", icon="✅")
                 time.sleep(1)
                 st.rerun()
