@@ -20,7 +20,6 @@ from logic.core.mapping import (
     OPTIONAL_BASE_COLUMNS,
     ENRICHMENT_KEY,
     SEPARATOR_ROW_FLAG,
-    SANITY_WARNING_FLAG,
     CLASSIFICATION_COL,
 )
 
@@ -332,7 +331,6 @@ class TemplateExcelWriter:
         for _, row in data_to_insert.iterrows():
             is_parent = bool(row.get(PARENT_ROW_FLAG, False))
             is_separator = bool(row.get(SEPARATOR_ROW_FLAG, False))
-            sanity_msg = row.get(SANITY_WARNING_FLAG)
 
             for base_col, col_idx in template_col_to_idx.items():
                 val = None
@@ -367,21 +365,24 @@ class TemplateExcelWriter:
                     new_cell.font = parent_font
                     new_cell.fill = parent_fill
                 elif current_row > 2:
-                    # Copiar a formatação da linha 2 (referência). 
-                    # Fallback estratégico para colunas novas (Classificação/Enriquecimento) que não existem no template original.
-                    ref_cell = ws.cell(row=2, column=col_idx)
+                    # Lógica de Herança de Estilo:
+                    # Para colunas que não existem no template físico (ex: Classificação/Enriquecimento),
+                    # usamos a Coluna 1 do template como modelo de estilo "seguro" (fontes, bordas, alinhamento).
+                    col_ref = ws.cell(row=2, column=col_idx)
+                    model_ref = ws.cell(row=2, column=1) # Coluna de Referência (modelo visual)
                     
-                    # Se a coluna atual não tem estilo no template (ex: Classificação)
-                    # usamos a Coluna 1 do template como modelo de estilo "seguro":
-                    if base_col == CLASSIFICATION_COL or not ref_cell.border or ref_cell.border.left.style is None:
-                        ref_cell = ws.cell(row=2, column=1) # Coluna Referencia/Fonte costuma estar formatada
+                    # Se a coluna original no template for "pobre" de estilo, usamos o modelo da primeira coluna
+                    use_model = (base_col == CLASSIFICATION_COL) or (not col_ref.border or not col_ref.border.left.style)
+                    style_source = model_ref if use_model else col_ref
 
-                    new_cell.font = copy(ref_cell.font)
-                    new_cell.border = copy(ref_cell.border)
+                    new_cell.font = copy(style_source.font)
+                    new_cell.border = copy(style_source.border)
+                    new_cell.alignment = copy(style_source.alignment)
+                    new_cell.protection = copy(style_source.protection)
+                    
+                    # Preservar o number_format original da coluna (para datas, etc), exceto se for moeda (já tratado)
                     if base_col not in self.CURRENCY_COLUMNS:
-                        new_cell.number_format = copy(ref_cell.number_format)
-                    new_cell.protection = copy(ref_cell.protection)
-                    new_cell.alignment = copy(ref_cell.alignment)
+                        new_cell.number_format = copy(col_ref.number_format)
 
                 # Garantir fundo limpo para todas as linhas que não são Fatura Pai
                 # Separadores SEMPRE devem ter fundo limpo (sem herdar cores de warning ou pai)
@@ -390,17 +391,6 @@ class TemplateExcelWriter:
                 elif not is_parent:
                     new_cell.fill = openpyxl.styles.PatternFill(fill_type=None)
 
-                # Destaque de Sanity Check: Pinta colunas financeiras de laranja se houver mensagem de aviso
-                # Somente se NÃO for uma linha separadora (evita colorir o "nada")
-                if not is_separator and pd.notna(sanity_msg) and base_col in {"Custo s/ GD", "Ganho total Padrão"}:
-                    new_cell.fill = sanity_fill
-                    from openpyxl.comments import Comment
-                    new_cell.comment = Comment(
-                        f"⚠ Possível erro de digitação na base de origem:\n{sanity_msg}",
-                        "Sistema MC"
-                    )
-                    new_cell.comment.width = 300
-                    new_cell.comment.height = 70
 
                 # Destaque de ausência (apenas na fonte, fundo permanece limpo)
                 # Não aplica o realce (bypass) para linhas separadoras

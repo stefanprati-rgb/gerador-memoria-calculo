@@ -48,8 +48,6 @@ PARENT_ROW_FLAG = "_is_parent"
 SEPARATOR_ROW_FLAG = "_is_separator"
 
 # Flag interna para marcar linhas com inconsistências financeiras grotescas
-SANITY_WARNING_FLAG = "_sanity_warning"
-
 # --- CLASSIFICAÇÃO DE ORIGEM ---
 # Coluna da base que indica a origem do dado (Fatura, Contrato, Demonstrativo etc.)
 CLASSIFICATION_SOURCE_COL = "Fonte dos Dados"
@@ -67,22 +65,22 @@ CLASSIFICATION_COL = "Classificação"
 # --- MAPEAMENTO BASE → TEMPLATE ---
 COLUMN_MAPPING = {
     # 'Coluna na base Balanço Energético': 'Coluna no destino'
-    "Referencia": "Referencia",
-    "No. UC": "No. UC",
+    "Referencia": "Mês de Referência",
+    "No. UC": "Instalação (UC)",
     "CPF/CNPJ": "CPF/CNPJ",
-    "Razao Social": "Razao Social",
+    "Razao Social": "Cliente (Razão Social)",
     "Distribuidora": "Distribuidora",
-    "Cred. Consumido Raizen": "Cred. Consumido Raizen",
-    "Desconto Contratado": "Desconto Contratado",
-    "Vencimento": "Vencimento",
-    "Status Pos-Faturamento": "Status Pos-Faturamento",
-    "Boleto Raizen": "Boleto Raizen",
-    "Tarifa Raizen": "Tarifa Raizen",
-    "Custo c/ GD": "Custo c/ GD",
-    "Custo s/ GD": "Custo s/ GD",
-    "Ganho total Padrão": "Ganho total Padrão",
+    "Cred. Consumido Raizen": "Energia Compensada (kWh)",
+    "Desconto Contratado": "% Desconto Acordado",
+    "Vencimento": "Data de Vencimento",
+    "Status Pos-Faturamento": "Situação do Pagamento",
+    "Boleto Raizen": "Fatura Raízen (R$)",
+    "Tarifa Raizen": "Tarifa Aplicada (R$)",
+    "Custo c/ GD": "Custo Atual c/ Desconto (R$)",
+    "Custo s/ GD": "Custo Antigo s/ Desconto (R$)",
+    "Ganho total Padrão": "Economia Gerada (R$)",
     # Coluna calculada — não vem diretamente da base, é derivada de CLASSIFICATION_SOURCE_COL
-    CLASSIFICATION_COL: CLASSIFICATION_COL,
+    CLASSIFICATION_COL: "Tipo de Faturamento",
 }
 
 # Coluna usada para identificar clientes na interface (seleção por nome)
