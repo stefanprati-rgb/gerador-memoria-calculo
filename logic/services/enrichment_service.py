@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # --- CONFIGURAÇÃO FIREBASE ---
 COLLECTION_NAME = "uc_mappings"
 PROFILES_COLLECTION = "profiles"
+COLLECTION_ENRICHMENT = "uc_enrichment"
 _adapter = None
 
 def _get_adapter():
@@ -173,6 +174,88 @@ def delete_profile(profile_name: str) -> bool:
         return True
     except Exception as e:
         logger.error("Erro ao excluir perfil '%s': %s", profile_name, str(e))
+        return False
+
+# --- NOVOS MÉTODOS DE GERENCIAMENTO (CONSECUTIVO) ---
+
+def get_all_enrichment_data() -> pd.DataFrame:
+    """
+    Busca todos os documentos da collection uc_enrichment.
+    Retorna um DataFrame onde a coluna No. UC é preenchida com o ID de cada documento.
+    """
+    try:
+        adapter = _get_adapter()
+        db = adapter._get_db()
+        if not adapter or not db:
+            return pd.DataFrame(columns=[ENRICHMENT_KEY])
+
+        docs = db.collection(COLLECTION_ENRICHMENT).stream()
+        data = []
+        for doc in docs:
+            item = doc.to_dict()
+            item[ENRICHMENT_KEY] = doc.id
+            data.append(item)
+            
+        return pd.DataFrame(data) if data else pd.DataFrame(columns=[ENRICHMENT_KEY])
+    except Exception as e:
+        logger.error("Erro ao buscar dados de enriquecimento: %s", e)
+        return pd.DataFrame(columns=[ENRICHMENT_KEY])
+
+def delete_enrichment_data(ucs_to_delete: List[str]) -> bool:
+    """
+    Deleta os documentos correspondentes na collection uc_enrichment.
+    """
+    try:
+        adapter = _get_adapter()
+        db = adapter._get_db()
+        if not adapter or not db:
+            return False
+
+        for uc in ucs_to_delete:
+            db.collection(COLLECTION_ENRICHMENT).document(str(uc)).delete()
+            
+        logger.info(f"{len(ucs_to_delete)} UCs excluídas da base de enriquecimento.")
+        return True
+    except Exception as e:
+        logger.error("Erro ao excluir UCs da base: %s", e)
+        return False
+
+def save_enrichment_data(df: pd.DataFrame) -> bool:
+    """
+    Salva ou atualiza registros na collection uc_enrichment.
+    Cada linha do DataFrame vira um documento com ID = No. UC.
+    """
+    try:
+        if df.empty:
+            return True
+            
+        adapter = _get_adapter()
+        db = adapter._get_db()
+        if not adapter or not db:
+            return False
+
+        if ENRICHMENT_KEY not in df.columns:
+            logger.error(f"Coluna {ENRICHMENT_KEY} não encontrada para salvamento.")
+            return False
+
+        # Sanitizar UCs para string (IDs de documento devem ser strings)
+        df_save = df.copy()
+        df_save[ENRICHMENT_KEY] = df_save[ENRICHMENT_KEY].astype(str).str.strip()
+
+        # Batch write se houver muitos registros seria melhor, mas para edições pontuais:
+        for _, row in df_save.iterrows():
+            uc_id = row[ENRICHMENT_KEY]
+            doc_data = row.drop(ENRICHMENT_KEY).to_dict()
+            # Remover NaNs/Nones indesejados se for o caso, mas DataFrame to_dict lida razoavelmente
+            # Vamos garantir que os valores sejam serializáveis
+            doc_data = {k: v for k, v in doc_data.items() if pd.notna(v)}
+            
+            db.collection(COLLECTION_ENRICHMENT).document(uc_id).set(doc_data, merge=True)
+            
+        logger.info(f"Base de enriquecimento atualizada com {len(df_save)} registros.")
+        return True
+    except Exception as e:
+        logger.exception("Erro ao salvar dados de enriquecimento: %s", e)
         return False
 
 # --- HELPERS INTERNOS ---

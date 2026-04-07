@@ -10,24 +10,31 @@ logger = logging.getLogger(__name__)
 
 def render_enrichment_wizard(orchestrator):
     """
-    Interface guiada passo a passo (Wizard) para o Enriquecimento de Dados.
+    Interface para o Enriquecimento de Dados.
+    Agora refatorada para usar Abas (Batch Import vs Gestão de Base).
     """
-    st.title("Enriquecimento de Dados")
+    st.title("Gestão de Enriquecimento")
     
-    if "enrichment_step" not in st.session_state:
-        st.session_state.enrichment_step = 1
-
-    current_step = st.session_state.enrichment_step
-
-    _render_stepper(current_step)
-    st.markdown("<div style='margin-top: -15px;'></div>", unsafe_allow_html=True)
+    tab1, tab2 = st.tabs(["📥 Importar em Lote", "🗄️ Gerenciar Base"])
     
-    if current_step == 1:
-        _render_step_1_upload()
-    elif current_step == 2:
-        _render_step_2_config(orchestrator)
-    elif current_step == 3:
-        _render_step_3_processing()
+    with tab1:
+        if "enrichment_step" not in st.session_state:
+            st.session_state.enrichment_step = 1
+
+        current_step = st.session_state.enrichment_step
+
+        _render_stepper(current_step)
+        st.markdown("<div style='margin-top: -15px;'></div>", unsafe_allow_html=True)
+        
+        if current_step == 1:
+            _render_step_1_upload()
+        elif current_step == 2:
+            _render_step_2_config(orchestrator)
+        elif current_step == 3:
+            _render_step_3_processing()
+
+    with tab2:
+        _render_tab_manage_base()
 
 def _render_stepper(current_step: int):
     """Renderiza uma barra de progresso visual estilo Wizard."""
@@ -212,7 +219,7 @@ def _render_step_2_config(orchestrator):
     
     col_save, _ = st.columns([0.4, 0.6])
     with col_save:
-        if st.button("Salvar Perfil", width='stretch', type="secondary", icon="💾"):
+        if st.button("Salvar e Automatizar", width='stretch', type="primary", icon="💾"):
             if enrichment_service.save_mapping(active_profile, edited_df):
                 st.session_state.mapping_df = edited_df
                 st.success(f"Perfil '{active_profile}' salvo com sucesso.")
@@ -347,3 +354,78 @@ def _render_step_3_processing():
             st.session_state.mapping_df = None
             st.session_state.active_profile = ""
             st.rerun()
+
+def _render_tab_manage_base():
+    """
+    Renderiza a Tab 2: Gerenciar Base.
+    Busca dados consolidados da service e permite edição/exclusão.
+    """
+    st.markdown("#### 🗄️ Base Consolidada de UCs Enriquecidas")
+    st.write("Visualize, edite ou remova UCs da base central do Firestore. Útil para encerramento de contratos.")
+    
+    base_df = enrichment_service.get_all_enrichment_data()
+    
+    if base_df.empty:
+        st.info("A base de enriquecimento (uc_enrichment) está vazia.")
+    else:
+        # Garantir No. UC na primeira coluna
+        cols = [ENRICHMENT_KEY] + [c for c in base_df.columns if c != ENRICHMENT_KEY]
+        base_df = base_df[cols]
+        
+        st.markdown("---")
+        
+        edited_df = st.data_editor(
+            base_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            key="enrichment_batch_editor",
+            column_config={
+                ENRICHMENT_KEY: st.column_config.TextColumn(f"Identificador ({ENRICHMENT_KEY})", disabled=True),
+            },
+            disabled=[ENRICHMENT_KEY]
+        )
+        
+        if st.button("💾 Salvar Alterações na Base", type="primary", use_container_width=True):
+            changes = st.session_state.get("enrichment_batch_editor", {})
+            
+            has_changes = False
+            
+            # 1. Processar Deleções
+            deleted_indices = changes.get("deleted_rows", [])
+            if deleted_indices:
+                ucs_to_delete = base_df.iloc[deleted_indices][ENRICHMENT_KEY].astype(str).tolist()
+                if enrichment_service.delete_enrichment_data(ucs_to_delete):
+                    has_changes = True
+            
+            # 2. Processar Edições e Adições
+            edited_rows_raw = changes.get("edited_rows", {}) # {index: {col: val}}
+            added_rows = changes.get("added_rows", [])
+            
+            rows_to_save = []
+            
+            # Edições
+            for idx_str, mods in edited_rows_raw.items():
+                idx = int(idx_str)
+                # Pegar a linha completa do edited_df (que já contém as modificações)
+                row_full = edited_df.iloc[idx].to_dict()
+                rows_to_save.append(row_full)
+                
+            # Adições (Note: No. UC estará vazio se desabilitado, o que é um problema)
+            for row in added_rows:
+                if ENRICHMENT_KEY in row and str(row[ENRICHMENT_KEY]).strip():
+                    rows_to_save.append(row)
+                else:
+                    st.warning("Uma nova linha foi ignorada por estar sem 'No. UC'.")
+
+            if rows_to_save:
+                df_to_save = pd.DataFrame(rows_to_save)
+                if enrichment_service.save_enrichment_data(df_to_save):
+                    has_changes = True
+            
+            if has_changes:
+                st.toast("Base atualizada com sucesso!", icon="✅")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.warning("Nenhuma alteração detectada para salvar.")
