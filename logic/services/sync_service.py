@@ -29,7 +29,7 @@ GESTAO_LOCAL = os.path.join(CACHE_DIR, "gd_gestao.xlsx")
 _TEXT_COLUMNS = {
     "Razao Social", "Distribuidora", "Desconto Contratado",
     "Status Pos-Faturamento", "No. UC", "CPF/CNPJ", "Referencia",
-    "Excecao Fat.", "Vencimento",
+    "Excecao Fat.", "Vencimento", "Número da conta",
 }
 
 
@@ -130,6 +130,8 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             cancel_col = header_map.get("data de cancelamento")
             ref_col = header_map.get("mês de referência", header_map.get("mes de referencia", header_map.get("referência", header_map.get("referencia"))))
             cancelada_col = header_map.get("cancelada")
+            # Coluna "Número da conta" — detectar com/sem acento e espaços
+            conta_col = header_map.get("número da conta", header_map.get("numero da conta", header_map.get("nº conta")))
 
             cols_to_read = []
             if uc_col: cols_to_read.append(uc_col)
@@ -141,6 +143,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             if cancel_col: cols_to_read.append(cancel_col)
             if ref_col: cols_to_read.append(ref_col)
             if cancelada_col: cols_to_read.append(cancelada_col)
+            if conta_col: cols_to_read.append(conta_col)
 
             df_gestao = pd.read_excel(GESTAO_LOCAL, usecols=cols_to_read)
 
@@ -197,6 +200,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             if status_col: rename_dict[status_col] = "Status Pos-Faturamento_gestao"
             if valor_cob_col: rename_dict[valor_cob_col] = "Valor_gestao"
             if base_calc_col: rename_dict[base_calc_col] = "Base_gestao"
+            if conta_col: rename_dict[conta_col] = "Número da conta"
             
             # Remover colunas originais que não usaremos mais ou renomearemos
             cols_to_drop = [uc_col]
