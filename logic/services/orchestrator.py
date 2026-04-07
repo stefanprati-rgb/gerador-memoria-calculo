@@ -134,6 +134,12 @@ class Orchestrator:
                     .replace(["nan", "None", ""], pd.NA)  # Voltar pd.NA real após converter para str
                 )
 
+        # Blindagem de chaves de agrupamento: normalizar espaços e case para evitar
+        # que "CEMIG" vs "Cemig " ou "  Referencia" criem grupos duplicados
+        for col in ["Distribuidora", "Referencia", CLIENT_COLUMN]:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.strip().str.upper().replace(["NAN", "NONE", ""], pd.NA)
+
         # Determinar chaves adicionais de hierarquia (IBM -> Hierarchy -> No. UC)
         if not group_by_distributor:
             if GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
@@ -290,10 +296,19 @@ class Orchestrator:
         if enrichment_df is not None and not enrichment_df.empty:
             # Segurança: Evitar que UCs duplicadas no mapeamento multipliquem as linhas na planilha final
             clean_enrichment = enrichment_df.drop_duplicates(subset=[ENRICHMENT_KEY], keep='last')
+            
+            # Proteger contra colunas duplicadas: dropar do enriquecimento colunas já presentes na base
+            # (exceto a chave de merge) para evitar _x/_y que quebram o agrupamento
+            existing_cols = set(filtered_df.columns) - {ENRICHMENT_KEY}
+            cols_to_drop = [c for c in clean_enrichment.columns if c in existing_cols]
+            if cols_to_drop:
+                logger.info("Removendo %d colunas duplicadas do enriquecimento: %s", len(cols_to_drop), cols_to_drop)
+                clean_enrichment = clean_enrichment.drop(columns=cols_to_drop)
+            
             actual_enrichment_cols = [c for c in clean_enrichment.columns if c != ENRICHMENT_KEY and c not in COLUMN_MAPPING]
             logger.info("Aplicando enriquecimento (left merge) em %d registros.", len(filtered_df))
             filtered_df = pd.merge(filtered_df, clean_enrichment, on=ENRICHMENT_KEY, how='left')
-            logger.info("Enriquecimento de dados aplicado (%d novas colunas).", len(enrichment_df.columns) - 1)
+            logger.info("Enriquecimento de dados aplicado (%d novas colunas).", len(clean_enrichment.columns) - 1)
 
         if filtered_df.empty:
             logger.warning("Nenhum dado encontrado após aplicar os filtros.")

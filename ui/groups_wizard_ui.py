@@ -315,11 +315,15 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
 
     # --- BOTÃO PRINCIPAL (O Caminho Feliz) ---
     if st.button("Gerar Memória de Cálculo", type="primary", use_container_width=True, icon="✨"):
-        # Lógica de carregamento de enriquecimento (agora dentro do fluxo de geração)
+        # Enriquecimento Automático: busca TODOS os perfis de metadados registrados no sistema
         enrichment_df = None
-        selected_profile = st.session_state.get(f"wiz_enrichment_{group.id}", "Nenhum")
-        if selected_profile != "Nenhum":
-             enrichment_df = enrichment_service.load_mapping(selected_profile)
+        try:
+            all_enrichment = enrichment_service.get_all_enrichment_data()
+            if all_enrichment is not None and not all_enrichment.empty:
+                enrichment_df = all_enrichment
+                logger.info("Enriquecimento automático: %d registros carregados de todos os perfis.", len(enrichment_df))
+        except Exception as enrich_err:
+            logger.warning("Falha ao carregar enriquecimento automático: %s. Continuando sem enriquecimento.", enrich_err)
 
         start_time = time.time()
         with st.spinner("Refinando dados e construindo Excel..."):
@@ -351,15 +355,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
     with st.expander("⚙️ Opções Avançadas"):
         st.markdown("<p style='font-size: 0.85rem; color: #666;'>Configurações técnicas para usuários experientes.</p>", unsafe_allow_html=True)
         
-        # Mapeamento / Enriquecimento
-        profiles = enrichment_service.list_profiles()
-        st.selectbox(
-            "Perfil de Enriquecimento (Mapeamento UC)",
-            options=["Nenhum"] + profiles,
-            index=0,
-            key=f"wiz_enrichment_{group.id}",
-            help="Faz o merge com códigos internos baseados na UC."
-        )
+        # Enriquecimento (automático — informativo)
+        st.markdown("**Enriquecimento:** Aplicado automaticamente a partir de todos os perfis cadastrados na aba de Metadados.")
         
         # Toggle de Distribuidora
         group.group_by_distributor = st.toggle(
