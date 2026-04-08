@@ -131,7 +131,10 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             ref_col = header_map.get("mês de referência", header_map.get("mes de referencia", header_map.get("referência", header_map.get("referencia"))))
             cancelada_col = header_map.get("cancelada")
             # Coluna "Número da conta" — detectar com/sem acento e espaços
-            conta_col = header_map.get("número da conta", header_map.get("numero da conta", header_map.get("nº conta")))
+            conta_col = header_map.get("número da conta", 
+                                       header_map.get("numero da conta", 
+                                       header_map.get("nº conta",
+                                       header_map.get("conta"))))
 
             cols_to_read = []
             if uc_col: cols_to_read.append(uc_col)
@@ -200,7 +203,8 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             if status_col: rename_dict[status_col] = "Status Pos-Faturamento_gestao"
             if valor_cob_col: rename_dict[valor_cob_col] = "Valor_gestao"
             if base_calc_col: rename_dict[base_calc_col] = "Base_gestao"
-            if conta_col: rename_dict[conta_col] = "Número da conta"
+            from logic.core.mapping import ACCOUNT_NUMBER_COL
+            if conta_col: rename_dict[conta_col] = ACCOUNT_NUMBER_COL
             
             # Remover colunas originais que não usaremos mais ou renomearemos
             cols_to_drop = [uc_col]
@@ -250,6 +254,12 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             
             logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros únicos na Gestão)...", merge_keys, len(df_gestao))
             _original_len = len(df_consolidado)  # capture antes do merge
+            
+            # Segurança: Se a coluna de conta já existir na base de Balanço (vazia), dropar antes do merge para evitar _x/_y
+            from logic.core.mapping import ACCOUNT_NUMBER_COL
+            if ACCOUNT_NUMBER_COL in df_consolidado.columns:
+                df_consolidado.drop(columns=[ACCOUNT_NUMBER_COL], inplace=True)
+                
             df_consolidado = pd.merge(df_consolidado, df_gestao, on=merge_keys, how="left")
 
             # 6. Guarda de Segurança: Expansão de linhas (duplicatas na Gestão)
@@ -275,6 +285,13 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                 df_consolidado.drop(columns=["Status Pos-Faturamento_gestao"], inplace=True)
             elif "Status Pos-Faturamento_gestao" in df_consolidado.columns:
                 df_consolidado.rename(columns={"Status Pos-Faturamento_gestao": "Status Pos-Faturamento"}, inplace=True)
+            
+            # 7.1 Limpeza específica da coluna de Conta (remover .0 e forçar string)
+            from logic.core.mapping import ACCOUNT_NUMBER_COL
+            if ACCOUNT_NUMBER_COL in df_consolidado.columns:
+                df_consolidado[ACCOUNT_NUMBER_COL] = df_consolidado[ACCOUNT_NUMBER_COL].apply(
+                    lambda x: str(int(float(x))) if pd.notna(x) and str(x).endswith('.0') else str(x) if pd.notna(x) else pd.NA
+                )
                 
             # Limpar colunas auxiliares de merge (mantendo No. UC_norm para o relatório se necessário)
             

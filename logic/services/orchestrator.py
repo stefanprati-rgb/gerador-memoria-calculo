@@ -334,9 +334,12 @@ class Orchestrator:
         processed_df = self._apply_classification(processed_df)
         
         # 1. Garantir que todas as colunas do mapping existam (defensivo)
+        from logic.core.mapping import ACCOUNT_NUMBER_COL
         legacy_keys = list(COLUMN_MAPPING.keys())
         for col in legacy_keys:
             if col not in processed_df.columns:
+                if col == ACCOUNT_NUMBER_COL:
+                    logger.warning("Coluna '%s' não encontrada na base consolidada. Verifique se o Sincronismo com a Gestão foi realizado.", col)
                 processed_df[col] = pd.NA
         
         # 2. Identificar colunas extras vindas estritamente do enrichment_df
