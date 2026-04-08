@@ -1,32 +1,51 @@
-# Ignore environment and IDE files
+# Byte-compiled / optimized / DLL files
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
 .venv/
 venv/
+ENV/
+
+# IDEs
 .idea/
 .vscode/
 
-# Project specific sensitive data
-data/
+# Dados Pessoais / LGPD (Bloqueio total de planilhas)
+*.csv
 *.xlsx
-!tests/*.xlsx
-!mc.xlsx
+*.xlsm
+*.parquet
 
-# Artefatos de desenvolvimento
-scripts/try_generate.py
-scripts/inspect_excel.py
-scripts/export_cols.py
-cols.json
-inspection_output.txt
-delci_output*.txt
-agrupamento_amostra.txt
-inspect_excel.py
-
-# Firebase e Integração Nuvem
+# Credenciais e Segredos
+.env
+firebase-credentials.json
+*-firebase-adminsdk-*.json
+*.key
+*.pem
 *.json
 !package.json
 !package-lock.json
-firebase-credentials.json
-.env
-*.xlsm
-*.parquet
+!composer.json
+!*.brain.json
+
+# Artefatos de Teste, Logs e Cobertura
+*.txt
+*.log
+.coverage
+htmlcov/
+tests/output.txt
+test_output.txt
+tmp_pytest_out.txt
+
+# Temporários e Backups
+tmp/
 data/cache/
+*.bak
+**/*.bak
+*.bak_*
+*.old
+
+# Dados Locais
+data/
