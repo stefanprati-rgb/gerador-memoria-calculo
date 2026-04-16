@@ -66,7 +66,7 @@ def isolated_cache_dirs(tmp_path, monkeypatch):
 
 @pytest.fixture
 def mock_balanco_df():
-    """Simula a aba Balanco Operacional com UCs sujas."""
+    """Simula a aba Balanco Operacional com todas as colunas obrigatórias."""
     return pd.DataFrame({
         "Referencia": ["01/01/2026", "01/02/2026", "01/01/2026", "01/02/2026"],
         "No. UC": ["42074274.0", "42074274.0", "5143128.0", "4000476449.0"],
@@ -75,7 +75,17 @@ def mock_balanco_df():
         "Distribuidora": ["Dist1", "Dist1", "Dist2", "Dist3"],
         "Cred. Consumido Raizen": [100, 100, 100, 100],
         "Desconto Contratado": [10, 10, 10, 10],
-        "Status Pos-Faturamento": ["Em aberto", "Em aberto", "Em aberto", "Em aberto"]
+        "Status Pos-Faturamento": ["Em aberto", "Em aberto", "Em aberto", "Em aberto"],
+        "Valor Enviado Emissão": [100, 100, 100, 100],
+        "Tarifa Raizen": [0.8, 0.8, 0.8, 0.8],
+        "Custo c/ GD": [90, 90, 90, 90],
+        "Custo s/ GD": [100, 100, 100, 100],
+        "Ganho total Padrão": [10, 10, 10, 10],
+        "Excecao Fat.": ["", "", "", ""],
+        "UC p Rateio": ["", "", "", ""],
+        "Main": ["", "", "", ""],
+        "No. IBM": ["", "", "", ""],
+        "Fonte dos Dados": ["Fatura", "Fatura", "Fatura", "Fatura"]
     })
 
 
@@ -282,6 +292,7 @@ def test_pendencias_periodo_nao_lancado(mock_balanco_df, tmp_path, monkeypatch):
                 "No. UC": ["123"],
                 "Razao Social": ["Test"],
                 "CPF/CNPJ": ["444"],
+                "Valor Enviado Emissão": [100],
                 "Status Pos-Faturamento": ["-"]
             })
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
@@ -312,6 +323,7 @@ def test_pendencias_uc_ausente(mock_balanco_df, tmp_path, monkeypatch):
                 "No. UC": ["999"],
                 "Razao Social": ["Test 999"],
                 "CPF/CNPJ": ["555"],
+                "Valor Enviado Emissão": [100],
                 "Status Pos-Faturamento": ["-"]
             })
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
@@ -342,6 +354,7 @@ def test_pendencias_vazio_quando_todos_completos(mock_balanco_df, tmp_path, monk
                 "No. UC": ["123"],
                 "Razao Social": ["Test"],
                 "CPF/CNPJ": ["444"],
+                "Valor Enviado Emissão": [100],
                 "Status Pos-Faturamento": ["-"]
             })
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)

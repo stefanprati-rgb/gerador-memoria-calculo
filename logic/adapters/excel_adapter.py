@@ -183,7 +183,7 @@ class TemplateExcelWriter:
 
     # Colunas da base que contêm valores monetários (R$)
     CURRENCY_COLUMNS = {
-        "Boleto Raizen", "Tarifa Raizen", "Custo c/ GD", "Custo s/ GD", "Ganho total Padrão",
+        "Valor Enviado Emissão", "Tarifa Raizen", "Custo c/ GD", "Custo s/ GD", "Ganho total Padrão",
     }
 
     # Colunas da base que contêm datas (mês/ano) - Removido Referencia para formatar como data completa
@@ -207,7 +207,7 @@ class TemplateExcelWriter:
         "Energia compensada pela Raízen (kWh)": "Cred. Consumido Raizen",
         "Regra aplicada": "Desconto Contratado",
         "Status financeiro": "Status Pos-Faturamento",
-        "Boleto faturado (R$)": "Boleto Raizen",
+        "Boleto faturado (R$)": "Valor Enviado Emissão",
         "Tarifa Distribuidora": "Tarifa Raizen",
         "Tafira Distribuidora": "Tarifa Raizen",
         "Custo com GD R$": "Custo c/ GD",

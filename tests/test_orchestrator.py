@@ -79,8 +79,8 @@ class TestAgrupamento:
         assert parent_row[PARENT_ROW_FLAG] == True
         assert parent_row["No. UC"] == "Fatura Agrupada"
         
-        # A soma de Boleto Raizen deve ser a soma das duas filhas (200 + 180 = 380)
-        assert parent_row["Boleto Raizen"] == pytest.approx(380.00)
+        # A soma de Valor Enviado Emissão deve ser a soma das duas filhas (200 + 180 = 380)
+        assert parent_row["Valor Enviado Emissão"] == pytest.approx(380.00)
         
         # As linhas filhas devem vir depois e não ter a flag
         assert result.iloc[1][PARENT_ROW_FLAG] == False

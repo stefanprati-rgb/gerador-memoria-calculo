@@ -121,7 +121,7 @@ class TestTemplateExcelWriter:
             "Cred. Consumido Raizen": [3000, 1500],
             "Desconto Contratado": ["15%", "15%"],
             "Status Pos-Faturamento": ["Pago", "Pago"],
-            "Boleto Raizen": [700, 350],
+            "Valor Enviado Emissão": [700, 350],
             "Tarifa Raizen": [0.85, 0.85],
             "Custo c/ GD": [2500, 1275],
             "Custo s/ GD": [3200, 1625],
@@ -137,12 +137,12 @@ class TestTemplateExcelWriter:
         ws = wb.active
 
         # Linha 2 = Fatura Pai (deve estar em negrito)
-        parent_cell = ws.cell(row=2, column=4)  # coluna Razao Social
+        parent_cell = ws.cell(row=2, column=5)  # coluna Razao Social
         assert parent_cell.value == "TOTAL AGRUPADO - Cliente Alpha"
         assert parent_cell.font.bold is True
 
         # Linha 3 = UC Filha (não deve estar em negrito via parent_font)
-        child_cell = ws.cell(row=3, column=4)
+        child_cell = ws.cell(row=3, column=5)
         assert child_cell.value == "Cliente Alpha"
     def test_renomeacao_headers_legados(self, tmp_path):
         """Deve detectar nomes antigos no template e convertê-los para os nomes da fonte no resultado."""
@@ -186,8 +186,8 @@ class TestTemplateExcelWriter:
         ws = wb.active
         
         # O valor no Excel deve ser 0
-        # Tarifa Raizen está na coluna 11 no COLUMN_MAPPING
-        assert ws.cell(row=2, column=11).value == 0.0
+        # Tarifa Raizen está na coluna 12 no COLUMN_MAPPING
+        assert ws.cell(row=2, column=12).value == 0.0
 
     def test_formatacao_referencia_full_date(self, sample_template_xlsx):
         """A coluna Referencia deve ser formatada como data completa (DD/MM/YYYY)."""

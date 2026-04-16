@@ -37,7 +37,7 @@ ACCOUNT_NUMBER_COL = "Número da conta"
 # Colunas financeiras que devem ser SOMADAS na linha "Fatura Pai"
 SUM_COLUMNS = [
     "Cred. Consumido Raizen",
-    "Boleto Raizen",
+    "Valor Enviado Emissão",
     "Tarifa Raizen",
     "Custo c/ GD",
     "Custo s/ GD",
@@ -78,10 +78,10 @@ COLUMN_MAPPING = {
     "Desconto Contratado": "% Desconto Acordado",
     "Vencimento": "Data de Vencimento",
     "Status Pos-Faturamento": "Situação do Pagamento",
-    "Boleto Raizen": "Fatura Raízen (R$)",
+    "Valor Enviado Emissão": "Fatura Raízen (R$)",
     "Tarifa Raizen": "Tarifa Aplicada (R$)",
-    "Custo c/ GD": "Custo Atual c/ Desconto (R$)",
-    "Custo s/ GD": "Custo Antigo s/ Desconto (R$)",
+    "Custo c/ GD": "Custo c/ Desconto GD",
+    "Custo s/ GD": "Custo s/ Desconto GD",
     "Ganho total Padrão": "Economia Gerada (R$)",
     # Coluna calculada — não vem diretamente da base, é derivada de CLASSIFICATION_SOURCE_COL
     CLASSIFICATION_COL: "Tipo de Faturamento",

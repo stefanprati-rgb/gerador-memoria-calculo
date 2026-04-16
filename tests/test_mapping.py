@@ -48,9 +48,9 @@ class TestColumnMapping:
     def test_colunas_template_esperadas(self):
         """Colunas essenciais do template devem estar no mapeamento."""
         template_cols = get_template_columns()
-        assert "No. UC" in template_cols
+        assert "Instalação (UC)" in template_cols
         assert "CPF/CNPJ" in template_cols
-        assert "Razao Social" in template_cols
+        assert "Cliente (Razão Social)" in template_cols
 
 
 class TestGroupingConstants:
@@ -72,7 +72,7 @@ class TestGroupingConstants:
     def test_sum_columns_definidas(self):
         """As colunas financeiras de soma devem estar definidas."""
         assert len(SUM_COLUMNS) > 0
-        assert "Boleto Raizen" in SUM_COLUMNS
+        assert "Valor Enviado Emissão" in SUM_COLUMNS
         assert "Custo c/ GD" in SUM_COLUMNS
 
     def test_parent_row_flag_definida(self):

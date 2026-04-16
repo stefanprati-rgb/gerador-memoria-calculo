@@ -24,7 +24,7 @@ def sample_base_df():
         "Desconto Contratado": ["15%", "10%", "15%", "20%", "20%", "12%"],
         "Vencimento": ["2026-01-15", "2026-01-20", "2026-02-15", "2026-01-10", "2026-01-10", "2026-01-25"],
         "Status Pos-Faturamento": ["Pago", "Pendente", "Pendente", "Pago", "Pago", "Pago"],
-        "Boleto Raizen": [350.00, 520.50, 370.25, 200.00, 180.00, 150.00],
+        "Valor Enviado Emissão": [350.00, 520.50, 370.25, 200.00, 180.00, 150.00],
         "Tarifa Raizen": [0.85, 0.92, 0.85, 0.78, 0.78, 0.80],
         "Custo c/ GD": [1275.43, 2116.00, 1360.64, 624.00, 546.00, 400.00],
         "Custo s/ GD": [1625.43, 2636.50, 1730.89, 824.00, 726.00, 550.00],
@@ -77,7 +77,7 @@ def sample_template_xlsx(tmp_path):
     headers = [
         "Referencia", "No. UC", "CPF/CNPJ", "Razao Social", "Distribuidora",
         "Cred. Consumido Raizen", "Desconto Contratado",
-        "Vencimento", "Status Pos-Faturamento", "Boleto Raizen",
+        "Vencimento", "Status Pos-Faturamento", "Valor Enviado Emissão",
         "Tarifa Raizen", "Custo c/ GD", "Custo s/ GD",
         "Ganho total Padrão", "Classificação"
     ]
