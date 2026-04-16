@@ -1,5 +1,7 @@
 import time
 import logging
+import io
+import zipfile
 import streamlit as st
 
 logger = logging.getLogger(__name__)
@@ -10,7 +12,7 @@ from ui.state.group_state import (
     select_clients, update_group_periods
 )
 from ui.utils.search_utils import build_search_index, filter_values
-from ui.utils.format_utils import format_period_label, safe_key, sanitize_filename
+from ui.utils.format_utils import format_period_label, safe_key, sanitize_filename, generate_suggested_filename
 from logic.services import enrichment_service
 from logic.services.client_group_service import save_client_group, list_client_groups, get_clients_from_group
 from ui.utils.notifications import notify_completion
@@ -86,6 +88,7 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                     group_clients = get_clients_from_group(selected_shortcut)
                     if group_clients:
                         select_clients(group.id, group_clients)
+                        update_group_name(group.id, selected_shortcut) # Sincroniza o nome do grupo carregado
                         
                         try:
                             profile = enrichment_service.load_mapping(selected_shortcut)
@@ -200,6 +203,9 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
     _, col_next = st.columns([0.7, 0.3])
     with col_next:
         if st.button("Próximo →", type="primary", use_container_width=True, disabled=len(group.clients) == 0):
+            if group.is_auto_name:
+                suggested = generate_suggested_filename(group.name, group.clients, group.periods)
+                update_group_name(group.id, suggested)
             st.session_state.wizard_step = 2
             st.rerun()
 
@@ -227,6 +233,10 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
         )
         if new_periods != group.periods:
             update_group_periods(group.id, list(new_periods))
+            # Se ainda estiver no modo automático, sugerir novo nome baseado nos períodos
+            if group.is_auto_name:
+                suggested = generate_suggested_filename(group.name, group.clients, list(new_periods))
+                update_group_name(group.id, suggested)
             st.rerun()
     else:
         new_periods = st.multiselect(
@@ -251,6 +261,12 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
         help="Este será o nome do arquivo .xlsx gerado."
     )
     if new_name != group.name:
+        # Se o usuário editar manualmente, desativar o modo automático
+        if group.is_auto_name:
+            # Só desativa se o que ele digitou for diferente da sugestão que teríamos agora
+            current_suggestion = generate_suggested_filename(group.name, group.clients, group.periods)
+            if new_name != current_suggestion:
+                group.is_auto_name = False
         update_group_name(group.id, new_name)
     
     # Controles
@@ -327,23 +343,53 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
 
         start_time = time.time()
         with st.spinner("Refinando dados e construindo Excel..."):
-            excel_data = orch.generate(
-                group.clients, 
-                group.periods, 
-                incomplete_filter=incomplete_filter,
-                group_by_distributor=group.group_by_distributor,
-                enrichment_df=enrichment_df
-            )
+            if len(group.periods) > 1:
+                # Geração Multiplexada: Um arquivo por referência dentro de um ZIP
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
+                    for period in group.periods:
+                        period_label = format_period_label(period).replace("/", "_")
+                        period_excel = orch.generate(
+                            group.clients,
+                            [period],
+                            incomplete_filter=incomplete_filter,
+                            group_by_distributor=group.group_by_distributor,
+                            enrichment_df=enrichment_df
+                        )
+                        if period_excel:
+                            f_name = f"{sanitize_filename(group.name)}_{period_label}.xlsx"
+                            z.writestr(f_name, period_excel)
+                
+                final_data = zip_buffer.getvalue()
+                is_zip = True
+            else:
+                # Geração Individual: Um único arquivo Excel
+                final_data = orch.generate(
+                    group.clients, 
+                    group.periods, 
+                    incomplete_filter=incomplete_filter,
+                    group_by_distributor=group.group_by_distributor,
+                    enrichment_df=enrichment_df
+                )
+                is_zip = False
             
         elapsed = time.time() - start_time
-        if excel_data:
-            filename = f"{sanitize_filename(group.name)}.xlsx"
+        if final_data:
+            if is_zip:
+                filename = f"{sanitize_filename(group.name)}.zip"
+                mime_type = "application/zip"
+                label = "📥 Baixar Arquivo ZIP"
+            else:
+                filename = f"{sanitize_filename(group.name)}.xlsx"
+                mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                label = "📥 Baixar Arquivo Excel"
+
             st.toast(f"Planilha pronta em {elapsed:.1f}s!", icon="✅")
             st.download_button(
-                label="📥 Baixar Arquivo Excel",
-                data=excel_data,
+                label=label,
+                data=final_data,
                 file_name=filename,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                mime=mime_type,
                 use_container_width=True,
                 type="primary"
             )

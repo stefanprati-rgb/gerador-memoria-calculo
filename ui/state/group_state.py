@@ -10,6 +10,7 @@ class GroupState:
     clients: List[str] = field(default_factory=list)
     periods: List[str] = field(default_factory=list)
     group_by_distributor: bool = False
+    is_auto_name: bool = True
 
 def initialize_groups() -> None:
     """Inicializa o estado dos grupos na sessão do Streamlit, se não existir."""
