@@ -136,6 +136,10 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                                        header_map.get("nº conta",
                                        header_map.get("conta"))))
 
+            pag_col = header_map.get("data de pagamento", 
+                                     header_map.get("pagamento", 
+                                     header_map.get("data do pagamento")))
+
             cols_to_read = []
             if uc_col: cols_to_read.append(uc_col)
             if venc_col: cols_to_read.append(venc_col)
@@ -147,6 +151,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             if ref_col: cols_to_read.append(ref_col)
             if cancelada_col: cols_to_read.append(cancelada_col)
             if conta_col: cols_to_read.append(conta_col)
+            if pag_col: cols_to_read.append(pag_col)
 
             df_gestao = pd.read_excel(GESTAO_LOCAL, usecols=cols_to_read)
 
@@ -205,6 +210,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             if base_calc_col: rename_dict[base_calc_col] = "Base_gestao"
             from logic.core.mapping import ACCOUNT_NUMBER_COL
             if conta_col: rename_dict[conta_col] = ACCOUNT_NUMBER_COL
+            if pag_col: rename_dict[pag_col] = "Data de Pagamento"
             
             # Remover colunas originais que não usaremos mais ou renomearemos
             cols_to_drop = [uc_col]

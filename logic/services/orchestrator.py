@@ -24,6 +24,7 @@ from logic.core.mapping import (
     ACCOUNT_NUMBER_COL,
     SEPARATOR_ROW_FLAG,
 )
+from logic.core.cleaning import enforce_payment_rules
 import pandas as pd
 from typing import Any, List, Optional, Dict
 
@@ -358,6 +359,9 @@ class Orchestrator:
         # Estender com as colunas novas do enriquecimento
         for k in extra_cols:
             full_mapping[k] = k
+
+        # 5. Aplicar Regras Rigorosas de Pagamento (Saneamento de Dados)
+        processed_df = enforce_payment_rules(processed_df)
 
         writer = TemplateExcelWriter(self.template_file)
         excel_bytes = writer.generate_bytes(processed_df, full_mapping)

@@ -190,7 +190,7 @@ class TemplateExcelWriter:
     DATE_COLUMNS = set()
 
     # Colunas da base que contêm datas completas (dia/mês/ano)
-    FULL_DATE_COLUMNS = {"Vencimento", "Referencia"}
+    FULL_DATE_COLUMNS = {"Vencimento", "Referencia", "Data de Pagamento"}
 
     # Colunas da base que contêm CPF/CNPJ
     DOCUMENT_COLUMNS = {"CPF/CNPJ"}
@@ -235,18 +235,23 @@ class TemplateExcelWriter:
 
     @staticmethod
     def _format_date_full(val) -> Optional[str]:
-        """Converte datetime/Timestamp/str em string DD/MM/YYYY."""
+        """Converte datetime/Timestamp/str em string DD-MM-YYYY ou texto literal."""
         if val is None or pd.isna(val):
-            return None
+            return "Não disponível"
+            
+        # Se já for o nosso literal de regra de negócio, deixa passar
+        if isinstance(val, str) and val == "Não disponível":
+            return val
+            
         if isinstance(val, (pd.Timestamp,)):
-            return val.strftime("%d/%m/%Y")
+            return val.strftime("%d-%m-%Y")
         try:
-            # Assume DD-MM-YYYY format mostly
             ts = pd.to_datetime(val, dayfirst=True)
-            return ts.strftime("%d/%m/%Y")
+            return ts.strftime("%d-%m-%Y")
         except Exception:
             if isinstance(val, str):
-                return val.replace("-", "/")
+                # Tentar limpar barras se existirem
+                return val.replace("/", "-")
             return str(val)
 
     @staticmethod
