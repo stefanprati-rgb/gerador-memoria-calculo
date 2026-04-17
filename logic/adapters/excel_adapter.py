@@ -8,6 +8,7 @@ Otimizações de performance:
 - Compatível com @st.cache_data no app.py
 """
 import pandas as pd
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from logic.core.mapping import (
     get_base_columns,
@@ -186,11 +187,11 @@ class TemplateExcelWriter:
         "Valor Enviado Emissão", "Tarifa Raizen", "Custo c/ GD", "Custo s/ GD", "Ganho total Padrão",
     }
 
-    # Colunas da base que contêm datas (mês/ano) - Removido Referencia para formatar como data completa
-    DATE_COLUMNS = set()
+    # Colunas da base que contêm datas (mês/ano)
+    DATE_COLUMNS = {"Referencia"}
 
     # Colunas da base que contêm datas completas (dia/mês/ano)
-    FULL_DATE_COLUMNS = {"Vencimento", "Referencia", "Data de Pagamento"}
+    FULL_DATE_COLUMNS = {"Vencimento", "Data de Pagamento"}
 
     # Colunas da base que contêm CPF/CNPJ
     DOCUMENT_COLUMNS = {"CPF/CNPJ"}
@@ -222,14 +223,31 @@ class TemplateExcelWriter:
 
     @staticmethod
     def _format_date(val) -> Optional[str]:
-        """Converte datetime/Timestamp em string MM/YYYY."""
+        """
+        Converte datetime/Timestamp ou string MM-YYYY/MM/YYYY em string MM-YYYY.
+        Garante que não haja injeção de dias (viagem no tempo).
+        """
         if val is None or pd.isna(val):
             return None
-        if isinstance(val, (pd.Timestamp,)):
-            return val.strftime("%m/%Y")
+            
+        import re
+        # Se já estiver no formato alvo MM-YYYY, retorna direto
+        if isinstance(val, str):
+            val = val.strip()
+            if re.match(r"^\d{2}-\d{4}$", val):
+                return val
+            if re.match(r"^\d{2}/\d{4}$", val):
+                return val.replace("/", "-")
+        
+        if isinstance(val, (pd.Timestamp, datetime)):
+            return val.strftime("%m-%Y")
+            
         try:
-            ts = pd.to_datetime(val, dayfirst=True)
-            return ts.strftime("%m/%Y")
+            # Tenta converter, mas força o resultado para MM-YYYY
+            ts = pd.to_datetime(val, dayfirst=True, errors='coerce')
+            if pd.notna(ts):
+                return ts.strftime("%m-%Y")
+            return str(val)
         except Exception:
             return str(val)
 

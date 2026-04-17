@@ -1,4 +1,5 @@
 import pandas as pd
+import re
 from datetime import datetime
 import logging
 
@@ -15,6 +16,9 @@ def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
     """
     if df.empty:
         return df
+
+    # --- Regra 0: Referência (Blindagem de Competência) ---
+    df = sanitize_reference_period(df)
 
     # Faz uma cópia para não alterar referências indesejadas
     df_clean = df.copy()
@@ -107,4 +111,37 @@ def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
         logger.error("Status de pagamento inválidos detectados: %s", invalid_found)
         raise ValueError(f"Status de pagamento inválidos detectados: {invalid_found}")
     
+    return df_clean
+
+def sanitize_reference_period(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Higieniza a coluna de Referência (mês/ano) e valida o formato via regex.
+    Garante que valores como '12/2025' ou '12-2025' sejam normalizados e válidos.
+    """
+    if df.empty or "Referencia" not in df.columns:
+        return df
+
+    df_clean = df.copy()
+    regex_ref = re.compile(r"^(0[1-9]|1[0-2])[-/](\d{4})$")
+
+    def validate_ref(val):
+        if pd.isna(val):
+            return val
+        
+        s_val = str(val).strip()
+        match = regex_ref.match(s_val)
+        if match:
+            # Normaliza para MM-YYYY
+            return f"{match.group(1)}-{match.group(2)}"
+        
+        # Se for um datetime, converte para MM-YYYY
+        if isinstance(val, (datetime, pd.Timestamp)):
+            return val.strftime("%m-%Y")
+            
+        return val
+
+    df_clean["Referencia"] = df_clean["Referencia"].apply(validate_ref)
+    
+    # Validação final: se sobrou algo que não bate com a regex (e não é nulo)
+    # podemos decidir se limpamos ou se deixamos para o log
     return df_clean
