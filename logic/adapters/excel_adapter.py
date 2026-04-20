@@ -197,7 +197,7 @@ class TemplateExcelWriter:
     DOCUMENT_COLUMNS = {"CPF/CNPJ"}
 
     # Colunas que devem ser tratadas como texto puro
-    TEXT_COLUMNS = {ACCOUNT_NUMBER_COL, ENRICHMENT_KEY}
+    TEXT_COLUMNS = {ACCOUNT_NUMBER_COL, ENRICHMENT_KEY, "Referencia"}
 
     # Mapeamento reverso para localizar colunas no template físico (mc.xlsx) que ainda usam nomes antigos
     LEGACY_HEADER_MAP = {
@@ -224,29 +224,29 @@ class TemplateExcelWriter:
     @staticmethod
     def _format_date(val) -> Optional[str]:
         """
-        Converte datetime/Timestamp ou string MM-YYYY/MM/YYYY em string MM-YYYY.
+        Converte datetime/Timestamp ou string MM-YYYY/MM/YYYY em string MM/YYYY.
         Garante que não haja injeção de dias (viagem no tempo).
         """
         if val is None or pd.isna(val):
             return None
             
         import re
-        # Se já estiver no formato alvo MM-YYYY, retorna direto
+        # Se já estiver no formato alvo MM/YYYY, retorna direto
         if isinstance(val, str):
             val = val.strip()
-            if re.match(r"^\d{2}-\d{4}$", val):
-                return val
             if re.match(r"^\d{2}/\d{4}$", val):
-                return val.replace("/", "-")
+                return val
+            if re.match(r"^\d{2}-\d{4}$", val):
+                return val.replace("-", "/")
         
         if isinstance(val, (pd.Timestamp, datetime)):
-            return val.strftime("%m-%Y")
+            return val.strftime("%m/%Y")
             
         try:
-            # Tenta converter, mas força o resultado para MM-YYYY
+            # Tenta converter, mas força o resultado para MM/YYYY
             ts = pd.to_datetime(val, dayfirst=True, errors='coerce')
             if pd.notna(ts):
-                return ts.strftime("%m-%Y")
+                return ts.strftime("%m/%Y")
             return str(val)
         except Exception:
             return str(val)

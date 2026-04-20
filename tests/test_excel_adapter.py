@@ -189,8 +189,8 @@ class TestTemplateExcelWriter:
         # Tarifa Raizen está na coluna 12 no COLUMN_MAPPING
         assert ws.cell(row=2, column=12).value == 0.0
 
-    def test_formatacao_referencia_full_date(self, sample_template_xlsx):
-        """A coluna Referencia deve ser formatada como data completa (DD/MM/YYYY)."""
+    def test_formatacao_referencia_mes_ano(self, sample_template_xlsx):
+        """A coluna Referencia deve ser formatada como mês/ano (MM/YYYY)."""
         df = pd.DataFrame({
             "Referencia": ["2026-01-01"],
             "No. UC": ["UC001"],
@@ -204,9 +204,9 @@ class TestTemplateExcelWriter:
         wb = openpyxl.load_workbook(io.BytesIO(result))
         ws = wb.active
         
-        # O valor no Excel deve ser a string formatada "01/01/2026"
+        # O valor no Excel deve ser a string formatada "01/2026"
         # Nota: Referencia está na coluna 1 no sample_template_xlsx
-        assert ws.cell(row=2, column=1).value == "01/01/2026"
+        assert ws.cell(row=2, column=1).value == "01/2026"
 
     @pytest.mark.xfail(
         reason="Bug preexistente: missing_fill não é aplicado ao fill da célula, apenas missing_font. Rastreado como dívida técnica.",

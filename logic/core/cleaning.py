@@ -131,12 +131,12 @@ def sanitize_reference_period(df: pd.DataFrame) -> pd.DataFrame:
         s_val = str(val).strip()
         match = regex_ref.match(s_val)
         if match:
-            # Normaliza para MM-YYYY
-            return f"{match.group(1)}-{match.group(2)}"
+            # Normaliza para MM/YYYY
+            return f"{match.group(1)}/{match.group(2)}"
         
-        # Se for um datetime, converte para MM-YYYY
+        # Se for um datetime, converte para MM/YYYY
         if isinstance(val, (datetime, pd.Timestamp)):
-            return val.strftime("%m-%Y")
+            return val.strftime("%m/%Y")
             
         return val
 
