@@ -238,6 +238,14 @@ class TemplateExcelWriter:
                 return val
             if re.match(r"^\d{2}-\d{4}$", val):
                 return val.replace("-", "/")
+
+            # FIX: ISO date format (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS) must be detected
+            # before pd.to_datetime(dayfirst=True) which would swap day/month
+            iso_match = re.match(r'^(\d{4})-(\d{1,2})-\d{1,2}', val)
+            if iso_match:
+                year = iso_match.group(1)
+                month = iso_match.group(2).zfill(2)
+                return f"{month}/{year}"
         
         if isinstance(val, (pd.Timestamp, datetime)):
             return val.strftime("%m/%Y")

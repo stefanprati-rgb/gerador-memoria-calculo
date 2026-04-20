@@ -140,6 +140,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                                      header_map.get("pagamento", 
                                      header_map.get("data do pagamento")))
 
+            # Coletar nomes originais para leitura (pandas precisa do nome exato, com espaços)
             cols_to_read = []
             if uc_col: cols_to_read.append(uc_col)
             if venc_col: cols_to_read.append(venc_col)
@@ -267,6 +268,9 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                 df_consolidado.drop(columns=[ACCOUNT_NUMBER_COL], inplace=True)
                 
             df_consolidado = pd.merge(df_consolidado, df_gestao, on=merge_keys, how="left")
+
+            # Normalizar nomes de colunas com trailing/leading spaces após o merge
+            df_consolidado.columns = df_consolidado.columns.str.strip()
 
             # 6. Guarda de Segurança: Expansão de linhas (duplicatas na Gestão)
             # Se o merge gerar mais do que o dobro de linhas, abortamos por segurança contra sujeira massiva.

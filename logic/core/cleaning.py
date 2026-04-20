@@ -138,6 +138,13 @@ def sanitize_reference_period(df: pd.DataFrame) -> pd.DataFrame:
         if isinstance(val, (datetime, pd.Timestamp)):
             return val.strftime("%m/%Y")
             
+        # Tratar formato ISO YYYY-MM-DD (com ou sem timestamp)
+        iso_match = re.match(r'^(\d{4})-(\d{1,2})-\d{1,2}', s_val)
+        if iso_match:
+            year = iso_match.group(1)
+            month = iso_match.group(2).zfill(2)
+            return f"{month}/{year}"
+
         return val
 
     df_clean["Referencia"] = df_clean["Referencia"].apply(validate_ref)

@@ -251,3 +251,17 @@ class TestTemplateExcelWriter:
         uc_cell = ws.cell(row=2, column=2)
         assert uc_cell.comment is not None
         assert "Dado ausente" in uc_cell.comment.text
+
+    def test_format_date_iso_regression(self):
+        """
+        Garante que strings de data em formato ISO (YYYY-MM-DD) convertidas pelo pandas 
+        não sofram swap de dia/mês pela lógica de dayfirst=True.
+        """
+        # Novembro: "2025-11-01" -> "11/2025" (Não "01/2025")
+        assert TemplateExcelWriter._format_date("2025-11-01") == "11/2025"
+        # Dezembro: "2025-12-01" -> "12/2025" (Não "01/2025")
+        assert TemplateExcelWriter._format_date("2025-12-01") == "12/2025"
+        # Janeiro: "2026-01-01" -> "01/2026"
+        assert TemplateExcelWriter._format_date("2026-01-01") == "01/2026"
+        # Fevereiro: "2026-02-01" -> "02/2026"
+        assert TemplateExcelWriter._format_date("2026-02-01") == "02/2026"

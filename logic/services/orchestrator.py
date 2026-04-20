@@ -108,23 +108,32 @@ class Orchestrator:
             logger.warning("Faltam colunas de agrupamento. Seguindo sem agregar faturas.")
             return df
 
+        # Criar colunas temporárias normalizadas APENAS para o groupby
+        _temp_cols = []
+        for col in ["Distribuidora", "Referencia", CLIENT_COLUMN]:
+            if col in df.columns:
+                temp_name = f"_grp_{col}"
+                df[temp_name] = df[col].astype(str).str.strip().str.upper().replace(["NAN", "NONE", ""], pd.NA)
+                _temp_cols.append(temp_name)
+
+        # Inicializar acumuladores para o processamento de grupos
         grouped_dfs = []
         parent_count = 0
-        
-        # Determinar a base das chaves de agrupamento
+
+        # Determinar a base das chaves de agrupamento usando as colunas temporárias
         if group_by_distributor:
-            # Para agrupamento por Distribuidora, ignoramos o nome do cliente (CLIENT_COLUMN)
-            # para evitar que variações de nome na base separem o grupo.
-            logger.info("Agrupamento por Distribuidora ativado: base ['Referencia', 'Distribuidora'].")
-            keys = ["Referencia", "Distribuidora"] if "Distribuidora" in df.columns else ["Referencia", CLIENT_COLUMN]
-            if "Distribuidora" not in df.columns:
-                 logger.warning("Agrupamento por Distribuidora solicitado mas coluna não encontrada. Usando CLIENT_COLUMN.")
+            logger.info("Agrupamento por Distribuidora ativado: base ['_grp_Referencia', '_grp_Distribuidora'].")
+            if "_grp_Distribuidora" in df.columns:
+                keys = ["_grp_Referencia", "_grp_Distribuidora"]
+            else:
+                logger.warning("Agrupamento por Distribuidora solicitado mas coluna não encontrada. Usando _grp_Cliente.")
+                keys = ["_grp_Referencia", f"_grp_{CLIENT_COLUMN}"]
         else:
-            # Comportamento padrão: Agrupar considerando Referência e Razão Social
-            keys = ["Referencia", CLIENT_COLUMN]
+            # Comportamento padrão: Agrupar considerando Referência e Razão Social (normalizados)
+            keys = ["_grp_Referencia", f"_grp_{CLIENT_COLUMN}"]
         
-        # Sanitização rigorosa de tipos para chaves de identificação (UCs, IBM e Contas)
-        # Excel costuma carregar números como float (1.0), o que quebra o de-para com strings ("1")
+        # Sanitização de tipos para chaves de identificação (UCs, IBM e Contas)
+        # Nesses casos a conversão para string é necessária para consistência do de-para
         for col in [ENRICHMENT_KEY, HIERARCHY_KEY_COL, GROUPING_IBM_COL, ACCOUNT_NUMBER_COL]:
             if col in df.columns:
                 df[col] = (
@@ -132,14 +141,8 @@ class Orchestrator:
                     .astype(str)
                     .str.replace(r"\.0$", "", regex=True)
                     .str.strip()
-                    .replace(["nan", "None", ""], pd.NA)  # Voltar pd.NA real após converter para str
+                    .replace(["nan", "None", ""], pd.NA)
                 )
-
-        # Blindagem de chaves de agrupamento: normalizar espaços e case para evitar
-        # que "CEMIG" vs "Cemig " ou "  Referencia" criem grupos duplicados
-        for col in ["Distribuidora", "Referencia", CLIENT_COLUMN]:
-            if col in df.columns:
-                df[col] = df[col].astype(str).str.strip().str.upper().replace(["NAN", "NONE", ""], pd.NA)
 
         # Determinar chaves adicionais de hierarquia (IBM -> Hierarchy -> No. UC)
         if not group_by_distributor:
@@ -215,6 +218,10 @@ class Orchestrator:
 
         if grouped_dfs:
             df = pd.concat(grouped_dfs, ignore_index=True)
+
+        # DROPAR COLUNAS TEMPORÁRIAS E CHAVES DINÂMICAS
+        df.drop(columns=[c for c in _temp_cols if c in df.columns], inplace=True, errors='ignore')
+        df.drop(columns=["group_key", "dynamic_key"], inplace=True, errors='ignore')
 
         logger.info("Agrupamento: %d faturas pai geradas. Total de linhas agora: %d.", parent_count, len(df))
         return df
