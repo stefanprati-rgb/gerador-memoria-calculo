@@ -219,6 +219,10 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             if cancel_col: cols_to_drop.append(cancel_col)
             if cancelada_col: cols_to_drop.append(cancelada_col)
             
+            # Filtrar faturas canceladas ANTES de remover a coluna
+            if cancelada_col and cancelada_col in df_gestao.columns:
+                df_gestao = df_gestao[df_gestao[cancelada_col].astype(str).str.strip().str.lower() != "sim"]
+            
             df_gestao = df_gestao.drop(columns=[c for c in cols_to_drop if c in df_gestao.columns])
             df_gestao.rename(columns=rename_dict, inplace=True)
 
