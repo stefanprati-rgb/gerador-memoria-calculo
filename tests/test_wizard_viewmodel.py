@@ -50,3 +50,14 @@ def test_wizard_viewmodel_payload_multiplexed():
     assert payload.filename == "Projeto_Alpha.zip"
     assert "zip" in payload.mime_type
     assert payload.incomplete_filter == "complete_only"
+
+def test_wizard_viewmodel_payload_uses_default_sort_when_missing_attr():
+    mock_orch = MagicMock()
+    vm = WizardViewModel(mock_orch)
+
+    group = GroupState(id=1, name="Projeto Alpha", clients=["CLI_A"], periods=["01/2024"])
+    delattr(group, "sort_by")
+
+    payload = vm.prepare_generation_payload(group, "all", None)
+
+    assert payload.sort_by == "Economia Gerada (Desc)"

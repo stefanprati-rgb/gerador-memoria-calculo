@@ -73,7 +73,7 @@ class WizardViewModel:
             tipo_apresentacao=group.tipo_apresentacao,
             incluir_resumo=group.incluir_resumo,
             separar_auditoria=group.separar_auditoria,
-            sort_by=group.sort_by,
+            sort_by=getattr(group, "sort_by", "Economia Gerada (Desc)"),
             is_multiplexed=is_multiplexed,
             filename=filename,
             mime_type=mime_type

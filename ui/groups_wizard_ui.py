@@ -336,6 +336,8 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
 
 def _render_step_3_review(group: GroupState, orch: Any) -> None:
     """Resumo e botão Final de Geração. Esconde engrenagens em 'Avançado'."""
+    current_sort_by = getattr(group, "sort_by", "Economia Gerada (Desc)")
+
     st.markdown(
         """
         <div class="wiz-review-hero">
@@ -481,11 +483,11 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
             new_sort = st.selectbox(
                 "Ordenar resultados por",
                 options=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"],
-                index=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"].index(group.sort_by),
+                index=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"].index(current_sort_by),
                 key=f"wiz_sort_{group.id}",
                 help="Define a ordem das faturas dentro de cada bloco ou aba."
             )
-            if new_sort != group.sort_by:
+            if new_sort != current_sort_by:
                 set_sort_by(group.id, new_sort)
 
         with col_apres2:

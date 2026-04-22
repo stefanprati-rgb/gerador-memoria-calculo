@@ -18,11 +18,37 @@ class GroupState:
     tipo_apresentacao: str = "Separadores Múltiplos"
     incluir_resumo: bool = True
     separar_auditoria: bool = True
+    sort_by: str = "Economia Gerada (Desc)"
+
+
+def _normalize_group_state(group: GroupState) -> None:
+    """Preenche atributos adicionados em versões mais novas para sessões já abertas."""
+    if not hasattr(group, "group_by_distributor"):
+        group.group_by_distributor = False
+    if not hasattr(group, "grouping_mode"):
+        group.grouping_mode = GROUPING_MODE_DISTRIBUTOR if group.group_by_distributor else GROUPING_MODE_DEFAULT
+    if not hasattr(group, "include_child_rows"):
+        group.include_child_rows = True
+    if not hasattr(group, "is_auto_name"):
+        group.is_auto_name = True
+    if not hasattr(group, "somente_pendencias"):
+        group.somente_pendencias = False
+    if not hasattr(group, "tipo_apresentacao"):
+        group.tipo_apresentacao = "Separadores Múltiplos"
+    if not hasattr(group, "incluir_resumo"):
+        group.incluir_resumo = True
+    if not hasattr(group, "separar_auditoria"):
+        group.separar_auditoria = True
+    if not hasattr(group, "sort_by"):
+        group.sort_by = "Economia Gerada (Desc)"
 
 def initialize_groups() -> None:
     """Inicializa o estado dos grupos na sessão do Streamlit, se não existir."""
     if "groups" not in st.session_state:
         st.session_state.groups = [GroupState(id=1, name="Grupo_1")]
+    else:
+        for group in st.session_state.groups:
+            _normalize_group_state(group)
 
     if "group_counter" not in st.session_state:
         st.session_state.group_counter = max(g.id for g in st.session_state.groups) if st.session_state.groups else 1
