@@ -31,8 +31,11 @@ def save_client_group(group_name: str, client_list: list) -> bool:
     """
     try:
         adapter = _get_adapter()
+        if not adapter:
+            logger.error("Firestore não disponível para salvar grupo de clientes.")
+            return False
         db = adapter._get_db()
-        if not adapter or not db:
+        if not db:
             logger.error("Firestore não disponível para salvar grupo de clientes.")
             return False
 
@@ -58,8 +61,10 @@ def list_client_groups() -> List[str]:
     """
     try:
         adapter = _get_adapter()
+        if not adapter:
+            return []
         db = adapter._get_db()
-        if not adapter or not db:
+        if not db:
             return []
 
         docs = db.collection(CLIENT_GROUPS_COLLECTION).list_documents()
@@ -74,8 +79,10 @@ def get_clients_from_group(group_name: str) -> List[str]:
     """
     try:
         adapter = _get_adapter()
+        if not adapter:
+            return []
         db = adapter._get_db()
-        if not adapter or not db:
+        if not db:
             return []
 
         doc_ref = db.collection(CLIENT_GROUPS_COLLECTION).document(group_name)
