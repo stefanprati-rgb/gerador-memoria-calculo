@@ -66,50 +66,81 @@ def _render_stepper(current_step: int):
 
 def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> None:
     """Pede apenas os clientes."""
-    st.markdown("<h4 style='margin-bottom: 10px;'>1. Selecione os Clientes</h4>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="wiz-step-hero">
+            <h4>1. Selecione os clientes</h4>
+            <p>Monte o escopo do projeto escolhendo os clientes que participarão da memória de cálculo. Você pode buscar rapidamente ou carregar um grupo salvo.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"""
+        <div class="wiz-step-summary">
+            <span class="wiz-chip">{len(group.clients)} cliente(s) no escopo</span>
+            <span class="wiz-chip">{len(available_clients)} cliente(s) disponíveis</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     
     # --- BUSCA E CARREGAMENTO (Interface Limpa) ---
-    col_search, col_saved = st.columns([0.65, 0.35])
-    
-    with col_saved:
-        try:
-            saved_groups = list_client_groups()
-            if saved_groups:
-                selected_shortcut = st.selectbox(
-                    "Carregar grupo salvo",
-                    options=["Grupos Salvos"] + saved_groups,
-                    index=0,
-                    key=f"wiz_shortcut_{group.id}",
-                    label_visibility="collapsed"
-                )
-                
-                if selected_shortcut != "Grupos Salvos":
-                    from ui.viewmodels.wizard_viewmodel import WizardViewModel
-                    sucesso = WizardViewModel.load_shortcut(group.id, selected_shortcut)
-                    if sucesso:
-                        st.success(f"'{selected_shortcut}' carregado.")
-                        st.session_state[f"wiz_shortcut_{group.id}"] = "Grupos Salvos"
-                        time.sleep(0.5)
-                        st.rerun()
-        except Exception as e:
-            logger.error("Erro na interface de atalhos de grupos: %s", e)
-
-    # 1. Área de Busca (Foco Central)
-    with col_search:
-        search_index = build_search_index(available_clients)
-        search_term = st.text_input(
-            "Buscar cliente...", 
-            key=f"wiz_search_cli_{group.id}", 
-            placeholder="🔎 Digite o nome da empresa...",
-            label_visibility="collapsed"
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div class="wiz-search-title">Busca e atalhos</div>
+            <div class="wiz-search-copy">Use a busca para montar o escopo manualmente ou carregue um grupo salvo para acelerar a operação.</div>
+            """,
+            unsafe_allow_html=True,
         )
+        col_search, col_saved = st.columns([0.65, 0.35])
+    
+        with col_saved:
+            try:
+                saved_groups = list_client_groups()
+                if saved_groups:
+                    selected_shortcut = st.selectbox(
+                        "Carregar grupo salvo",
+                        options=["Grupos Salvos"] + saved_groups,
+                        index=0,
+                        key=f"wiz_shortcut_{group.id}",
+                        label_visibility="collapsed"
+                    )
+                    
+                    if selected_shortcut != "Grupos Salvos":
+                        from ui.viewmodels.wizard_viewmodel import WizardViewModel
+                        sucesso = WizardViewModel.load_shortcut(group.id, selected_shortcut)
+                        if sucesso:
+                            st.success(f"'{selected_shortcut}' carregado.")
+                            st.session_state[f"wiz_shortcut_{group.id}"] = "Grupos Salvos"
+                            time.sleep(0.5)
+                            st.rerun()
+            except Exception as e:
+                logger.error("Erro na interface de atalhos de grupos: %s", e)
+
+        # 1. Área de Busca (Foco Central)
+        with col_search:
+            search_index = build_search_index(available_clients)
+            search_term = st.text_input(
+                "Buscar cliente...", 
+                key=f"wiz_search_cli_{group.id}", 
+                placeholder="🔎 Digite o nome da empresa...",
+                label_visibility="collapsed"
+            )
     
     filtered_clients = filter_values(search_term, search_index) if search_term else []
     unselected_clients = [c for c in filtered_clients if c not in group.clients]
 
     if search_term and unselected_clients:
-        with st.container():
-            st.markdown("<div style='margin-top: -10px; margin-bottom: 15px;'>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown(
+                """
+                <div class="wiz-search-title">Resultados da busca</div>
+                <div class="wiz-search-copy">Adicione clientes individualmente ou inclua todas as variações retornadas na pesquisa.</div>
+                """,
+                unsafe_allow_html=True,
+            )
             cols_batch = st.columns([0.6, 0.4])
             with cols_batch[1]:
                 if len(unselected_clients) > 1:
@@ -122,62 +153,69 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                  if st.button(f"+ {client}", key=f"wiz_add_btn_{group.id}_{safe_key(client)}", use_container_width=True):
                      update_group_clients(group.id, client, True)
                      st.rerun()
-            st.markdown("</div></div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
     elif search_term and not unselected_clients:
         st.info("Nenhum cliente novo encontrado.")
 
     # 2. Cesta de Selecionados (Progressive Disclosure)
     if group.clients:
-        st.markdown("<hr style='opacity: 0.1; margin: 15px 0;'>", unsafe_allow_html=True)
-        col_lbl, col_clr, col_save_pop = st.columns([0.5, 0.25, 0.25])
-        
-        with col_lbl:
-            st.markdown(f"<p style='font-size: 0.9rem; margin-top: 5px;'><b>Selecionados:</b> {len(group.clients)} clientes</p>", unsafe_allow_html=True)
-        
-        with col_clr:
-            if st.button("Limpar", key=f"wiz_btn_clear_{group.id}", use_container_width=True):
-                clear_group_clients(group.id)
-                st.rerun()
-        
-        with col_save_pop:
-            # NOVO: Popover para salvar grupo (Premium Minimalism)
-            if hasattr(st, "popover"):
-                with st.popover("💾 Salvar", use_container_width=True):
-                    st.markdown("<p style='font-size: 0.85rem; font-weight: bold;'>Novo Grupo de Clientes</p>", unsafe_allow_html=True)
-                    new_group_name = st.text_input("Nome do Grupo", key=f"wiz_new_grp_name_{group.id}", placeholder="Ex: Clientes Setor Norte...")
-                    if st.button("Salvar Agora", key=f"wiz_save_grp_btn_{group.id}", type="primary", use_container_width=True):
-                        if new_group_name:
-                            try:
-                                if save_client_group(new_group_name, group.clients):
-                                    st.success(f"Salvo!")
-                                    time.sleep(0.8)
-                                    st.rerun()
-                            except Exception as e:
-                                st.error(f"Erro: {e}")
-                        else:
-                            st.warning("Digite um nome.")
-            else:
-                with st.expander("💾 Salvar"):
-                    new_group_name = st.text_input("Nome do Grupo", key=f"wiz_new_grp_name_{group.id}")
-                    if st.button("Salvar", key=f"wiz_save_grp_btn_{group.id}"):
-                        save_client_group(new_group_name, group.clients)
-                        st.rerun()
-
-        # Pills para remoção rápida
-        if hasattr(st, "pills"):
-            selected_to_remove = st.pills(
-                "Remover",
-                options=group.clients,
-                default=[],
-                key=f"wiz_pill_remove_{group.id}",
-                label_visibility="collapsed"
+        with st.container(border=True):
+            st.markdown(
+                """
+                <div class="wiz-search-title">Escopo selecionado</div>
+                <div class="wiz-search-copy">Revise os clientes adicionados, limpe o escopo ou salve a seleção como atalho para reutilizar depois.</div>
+                """,
+                unsafe_allow_html=True,
             )
-            if selected_to_remove:
-                for client in selected_to_remove:
-                     update_group_clients(group.id, client, False)
-                st.rerun()
-        else:
-             st.markdown(f"<div style='font-size: 0.8rem; color: #555;'>{', '.join(group.clients[:10])}{'...' if len(group.clients)>10 else ''}</div>", unsafe_allow_html=True)
+            col_lbl, col_clr, col_save_pop = st.columns([0.5, 0.25, 0.25])
+            
+            with col_lbl:
+                st.markdown(f"<p style='font-size: 0.9rem; margin-top: 5px;'><b>Selecionados:</b> {len(group.clients)} clientes</p>", unsafe_allow_html=True)
+            
+            with col_clr:
+                if st.button("Limpar", key=f"wiz_btn_clear_{group.id}", use_container_width=True):
+                    clear_group_clients(group.id)
+                    st.rerun()
+            
+            with col_save_pop:
+                # NOVO: Popover para salvar grupo (Premium Minimalism)
+                if hasattr(st, "popover"):
+                    with st.popover("💾 Salvar", use_container_width=True):
+                        st.markdown("<p style='font-size: 0.85rem; font-weight: bold;'>Novo Grupo de Clientes</p>", unsafe_allow_html=True)
+                        new_group_name = st.text_input("Nome do Grupo", key=f"wiz_new_grp_name_{group.id}", placeholder="Ex: Clientes Setor Norte...")
+                        if st.button("Salvar Agora", key=f"wiz_save_grp_btn_{group.id}", type="primary", use_container_width=True):
+                            if new_group_name:
+                                try:
+                                    if save_client_group(new_group_name, group.clients):
+                                        st.success(f"Salvo!")
+                                        time.sleep(0.8)
+                                        st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erro: {e}")
+                            else:
+                                st.warning("Digite um nome.")
+                else:
+                    with st.expander("💾 Salvar"):
+                        new_group_name = st.text_input("Nome do Grupo", key=f"wiz_new_grp_name_{group.id}")
+                        if st.button("Salvar", key=f"wiz_save_grp_btn_{group.id}"):
+                            save_client_group(new_group_name, group.clients)
+                            st.rerun()
+
+            # Pills para remoção rápida
+            if hasattr(st, "pills"):
+                selected_to_remove = st.pills(
+                    "Remover",
+                    options=group.clients,
+                    default=[],
+                    key=f"wiz_pill_remove_{group.id}",
+                    label_visibility="collapsed"
+                )
+                if selected_to_remove:
+                    for client in selected_to_remove:
+                         update_group_clients(group.id, client, False)
+                    st.rerun()
+            else:
+                 st.markdown(f"<div style='font-size: 0.8rem; color: #555;'>{', '.join(group.clients[:10])}{'...' if len(group.clients)>10 else ''}</div>", unsafe_allow_html=True)
 
     # Controles de Navegação
     st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
@@ -193,7 +231,24 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
 
 def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> None:
     """Passo focado 100% em Tempo e Nome do Arquivo."""
-    st.markdown("<h4 style='margin-bottom: 10px;'>2. Defina o Período</h4>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="wiz-step-hero">
+            <h4>2. Defina o período</h4>
+            <p>Escolha os meses que entrarão na emissão e confirme o nome final do arquivo. Esta etapa fecha o escopo temporal antes da revisão final.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"""
+        <div class="wiz-step-summary">
+            <span class="wiz-chip">{len(group.clients)} cliente(s) selecionado(s)</span>
+            <span class="wiz-chip">{len(group.periods)} período(s) escolhido(s)</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     
     # Estilo das pílulas (Apple-like)
     st.markdown("""
@@ -203,46 +258,62 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
         </style>
     """, unsafe_allow_html=True)
 
-    if hasattr(st, "pills"):
-        new_periods = st.pills(
-            "Meses",
-            options=available_periods,
-            default=group.periods,
-            format_func=format_period_label,
-            selection_mode="multi",
-            key=f"wiz_pill_periods_{group.id}",
-            label_visibility="collapsed"
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div class="wiz-search-title">Janela de emissão</div>
+            <div class="wiz-search-copy">Selecione um ou mais meses. Se houver mais de um período, a geração final será multiplexada em ZIP por referência.</div>
+            """,
+            unsafe_allow_html=True,
         )
-        if new_periods != group.periods:
-            update_group_periods(group.id, list(new_periods))
-            from ui.state.group_state import update_group_name_if_auto
-            update_group_name_if_auto(group.id)
-            st.rerun()
-    else:
-        new_periods = st.multiselect(
-            "Selecione os meses", 
-            options=available_periods,
-            default=group.periods,
-            format_func=format_period_label,
-            key=f"wiz_multi_periods_{group.id}"
-        )
-        if new_periods != group.periods:
-            update_group_periods(group.id, new_periods)
-            st.rerun()
+        if hasattr(st, "pills"):
+            new_periods = st.pills(
+                "Meses",
+                options=available_periods,
+                default=group.periods,
+                format_func=format_period_label,
+                selection_mode="multi",
+                key=f"wiz_pill_periods_{group.id}",
+                label_visibility="collapsed"
+            )
+            if new_periods != group.periods:
+                update_group_periods(group.id, list(new_periods))
+                from ui.state.group_state import update_group_name_if_auto
+                update_group_name_if_auto(group.id)
+                st.rerun()
+        else:
+            new_periods = st.multiselect(
+                "Selecione os meses", 
+                options=available_periods,
+                default=group.periods,
+                format_func=format_period_label,
+                key=f"wiz_multi_periods_{group.id}"
+            )
+            if new_periods != group.periods:
+                update_group_periods(group.id, new_periods)
+                st.rerun()
 
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
     
     # Nome do Arquivo com foco limpo
-    new_name = st.text_input(
-        "Nome do Arquivo Final",
-        value=group.name,
-        key=f"wiz_name_{group.id}",
-        placeholder="Ex: Memória de Cálculo Abril 2024",
-        help="Este será o nome do arquivo .xlsx gerado."
-    )
-    if new_name != group.name:
-        from ui.state.group_state import set_custom_group_name
-        set_custom_group_name(group.id, new_name)
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div class="wiz-search-title">Nome do arquivo final</div>
+            <div class="wiz-search-copy">Você pode manter o nome sugerido automaticamente ou definir um nome manual para a entrega.</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        new_name = st.text_input(
+            "Nome do Arquivo Final",
+            value=group.name,
+            key=f"wiz_name_{group.id}",
+            placeholder="Ex: Memória de Cálculo Abril 2024",
+            help="Este será o nome do arquivo .xlsx gerado."
+        )
+        if new_name != group.name:
+            from ui.state.group_state import set_custom_group_name
+            set_custom_group_name(group.id, new_name)
     
     # Controles
     st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)

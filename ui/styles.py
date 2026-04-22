@@ -299,6 +299,54 @@ CUSTOM_CSS = """
         font-size: 0.82rem;
         font-weight: 600;
     }
+    .wiz-step-hero {
+        background: linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(244,249,251,0.96) 100%);
+        border: 1px solid rgba(16, 76, 117, 0.08);
+        border-radius: 18px;
+        padding: 1.15rem 1.25rem;
+        box-shadow: 0 10px 22px rgba(12, 37, 53, 0.05);
+        margin-bottom: 0.9rem;
+    }
+    .wiz-step-hero h4 {
+        margin: 0 0 0.25rem 0;
+        font-size: 1.18rem;
+        letter-spacing: -0.02em;
+        color: #153b4b;
+    }
+    .wiz-step-hero p {
+        margin: 0;
+        color: rgba(21, 59, 75, 0.78);
+        line-height: 1.45;
+    }
+    .wiz-step-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin: 0.8rem 0 0.1rem 0;
+    }
+    .wiz-step-summary .wiz-chip {
+        background: rgba(15, 76, 117, 0.08);
+        color: #15546d;
+    }
+    .wiz-search-shell {
+        border-radius: 18px;
+        padding: 0.95rem 1rem;
+        background: linear-gradient(180deg, rgba(250,252,253,0.98) 0%, rgba(245,248,250,0.95) 100%);
+        border: 1px solid rgba(16, 76, 117, 0.08);
+        margin-bottom: 0.9rem;
+    }
+    .wiz-search-title {
+        font-size: 0.98rem;
+        font-weight: 700;
+        color: #153b4b;
+        margin-bottom: 0.2rem;
+    }
+    .wiz-search-copy {
+        color: rgba(21, 59, 75, 0.76);
+        line-height: 1.42;
+        margin-bottom: 0.7rem;
+        font-size: 0.92rem;
+    }
     @media (max-width: 900px) {
         .wiz-summary-grid {
             grid-template-columns: 1fr;
