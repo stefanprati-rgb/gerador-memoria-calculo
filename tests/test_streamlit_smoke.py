@@ -60,14 +60,14 @@ def test_admin_login_feedback_smoke(monkeypatch):
     at.run()
 
     at.sidebar.text_input[0].set_value("wrong").run()
-    login_button = next(button for button in at.sidebar.button if button.label == "Entrar")
-    login_button.click().run()
+    submit_button = next(button for button in at.sidebar.button if button.label == "Entrar")
+    submit_button.click().run()
 
     assert any("Senha inválida." in error.value for error in at.sidebar.error)
 
     at.sidebar.text_input[0].set_value("secret").run()
-    login_button = next(button for button in at.sidebar.button if button.label == "Entrar")
-    login_button.click().run()
+    submit_button = next(button for button in at.sidebar.button if button.label == "Entrar")
+    submit_button.click().run()
 
     assert any(button.label == "Sair" for button in at.sidebar.button)
 

@@ -37,19 +37,19 @@ def _get_current_admin_password() -> str:
 def render_admin_panel():
     """Renderiza o painel admin na sidebar para upload e sincronização de bases."""
     with st.sidebar.expander("Atualizar Bases (Admin)", expanded=False):
-        admin_senha = st.text_input("Senha Admin", type="password", key="admin_password_input")
-        senha_digitada = _normalize_password(admin_senha)
-        senha_configurada = _normalize_password(_get_current_admin_password())
-
         if not _is_admin_authenticated():
-            col_login, col_logout = st.columns([0.7, 0.3])
-            with col_login:
-                if st.button("Entrar", use_container_width=True, type="primary"):
-                    if senha_digitada == senha_configurada:
-                        _set_admin_authenticated(True)
-                        st.rerun()
-                    else:
-                        st.error("Senha inválida.")
+            with st.form("admin_login_form", clear_on_submit=False):
+                admin_senha = st.text_input("Senha Admin", type="password", key="admin_password_input")
+                submitted = st.form_submit_button("Entrar", use_container_width=True, type="primary")
+
+            if submitted:
+                senha_digitada = _normalize_password(admin_senha)
+                senha_configurada = _normalize_password(_get_current_admin_password())
+                if senha_digitada == senha_configurada:
+                    _set_admin_authenticated(True)
+                    st.rerun()
+                else:
+                    st.error("Senha inválida.")
             return
 
         if st.button("Sair", use_container_width=True):
