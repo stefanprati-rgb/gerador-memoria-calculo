@@ -3,9 +3,10 @@ Painel administrativo para sincronização de bases.
 Extraído de app.py para manter separação de responsabilidades.
 """
 import time
+import unicodedata
 import streamlit as st
 
-from config.settings import settings
+from config.settings import settings, Settings
 from logic.services.sync_service import (
     build_consolidated_cache_from_local_network,
     get_pendencias
@@ -23,16 +24,28 @@ def _set_admin_authenticated(value: bool) -> None:
     st.session_state.admin_authenticated = value
 
 
+def _normalize_password(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value or "")
+    return "".join(ch for ch in normalized.strip() if unicodedata.category(ch) != "Cf")
+
+
+def _get_current_admin_password() -> str:
+    """Recarrega a senha do ambiente para evitar comparação com config stale em memória."""
+    return Settings().admin_password
+
+
 def render_admin_panel():
     """Renderiza o painel admin na sidebar para upload e sincronização de bases."""
     with st.sidebar.expander("Atualizar Bases (Admin)", expanded=False):
         admin_senha = st.text_input("Senha Admin", type="password", key="admin_password_input")
+        senha_digitada = _normalize_password(admin_senha)
+        senha_configurada = _normalize_password(_get_current_admin_password())
 
         if not _is_admin_authenticated():
             col_login, col_logout = st.columns([0.7, 0.3])
             with col_login:
                 if st.button("Entrar", use_container_width=True, type="primary"):
-                    if admin_senha == settings.admin_password:
+                    if senha_digitada == senha_configurada:
                         _set_admin_authenticated(True)
                         st.rerun()
                     else:

@@ -49,7 +49,7 @@ class FakeOrchestrator:
 def test_admin_login_feedback_smoke(monkeypatch):
     import ui.admin as admin_ui
 
-    monkeypatch.setattr(admin_ui.settings, "admin_password", "secret")
+    monkeypatch.setattr(admin_ui, "_get_current_admin_password", lambda: "secret")
     monkeypatch.setattr(
         AdminViewModel,
         "get_state",
@@ -69,7 +69,7 @@ def test_admin_login_feedback_smoke(monkeypatch):
     login_button = next(button for button in at.sidebar.button if button.label == "Entrar")
     login_button.click().run()
 
-    assert any("Sincronização via Upload" in markdown.value for markdown in at.sidebar.markdown)
+    assert any(button.label == "Sair" for button in at.sidebar.button)
 
 
 def test_wizard_step_3_generate_smoke(monkeypatch):
