@@ -12,7 +12,6 @@ from ui.header import render_header
 from ui.sidebar import render_sidebar_metrics
 from ui.groups_wizard_ui import render_groups_section_wizard
 from ui.admin import render_admin_panel
-from ui.operational_home import render_operational_home
 
 # Inicializar logging
 setup_logging(settings.log_level)
@@ -28,7 +27,7 @@ inject_styles()
 render_header()
 
 if "previous_app_mode" not in st.session_state:
-    st.session_state.previous_app_mode = "Operação"
+    st.session_state.previous_app_mode = "Gerador de Memória"
 
 # --- BARRA LATERAL ---
 st.sidebar.header("Arquivos")
@@ -83,7 +82,7 @@ if base_file and template_file:
         st.sidebar.markdown("---")
         mode = st.sidebar.radio(
             "Selecione o Módulo",
-            ["Operação", "Gerador de Memória", "Enriquecimento de Dados"],
+            ["Gerador de Memória", "Enriquecimento de Dados"],
             index=0,
             key="app_mode",
         )
@@ -94,9 +93,7 @@ if base_file and template_file:
                 st.session_state.wizard_step = 1
             st.session_state.previous_app_mode = mode
 
-        if mode == "Operação":
-            render_operational_home()
-        elif mode == "Gerador de Memória":
+        if mode == "Gerador de Memória":
             render_groups_section_wizard(available_clients, available_periods, orch)
         else:
             from ui.enrichment_ui import render_enrichment_wizard

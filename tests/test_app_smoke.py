@@ -22,13 +22,12 @@ class FakeOrchestrator:
         return ["Cliente A", "Cliente B"]
 
 
-def test_app_default_opens_operational_home(monkeypatch, tmp_path):
+def test_app_default_opens_wizard(monkeypatch, tmp_path):
     import config.settings as settings_module
     import logic.services.sync_service as sync_service
     import logic.services.orchestrator as orchestrator_module
     import ui.admin as admin_ui
     import ui.groups_wizard_ui as wizard_ui
-    import ui.operational_home as operational_home_ui
     import ui.sidebar as sidebar_ui
 
     fake_cache = tmp_path / "base_consolidada.parquet"
@@ -45,27 +44,20 @@ def test_app_default_opens_operational_home(monkeypatch, tmp_path):
         "render_groups_section_wizard",
         lambda available_clients, available_periods, orch: __import__("streamlit").write("WIZARD_MARKER"),
     )
-    monkeypatch.setattr(
-        operational_home_ui,
-        "render_operational_home",
-        lambda: __import__("streamlit").write("OPERATIONAL_HOME_MARKER"),
-    )
-
     at = AppTest.from_file("app.py", default_timeout=10)
     at.run()
 
-    assert any("OPERATIONAL_HOME_MARKER" in markdown.value for markdown in at.markdown)
-    assert at.sidebar.radio[0].value == "Operação"
+    assert any("WIZARD_MARKER" in markdown.value for markdown in at.markdown)
+    assert at.sidebar.radio[0].value == "Gerador de Memória"
 
 
-def test_app_switches_modules_from_operational_home(monkeypatch, tmp_path):
+def test_app_switches_modules(monkeypatch, tmp_path):
     import config.settings as settings_module
     import logic.services.sync_service as sync_service
     import logic.services.orchestrator as orchestrator_module
     import ui.admin as admin_ui
     import ui.groups_wizard_ui as wizard_ui
     import ui.enrichment_ui as enrichment_ui
-    import ui.operational_home as operational_home_ui
     import ui.sidebar as sidebar_ui
 
     fake_cache = tmp_path / "base_consolidada.parquet"
@@ -81,11 +73,6 @@ def test_app_switches_modules_from_operational_home(monkeypatch, tmp_path):
         wizard_ui,
         "render_groups_section_wizard",
         lambda available_clients, available_periods, orch: __import__("streamlit").write("WIZARD_MARKER"),
-    )
-    monkeypatch.setattr(
-        operational_home_ui,
-        "render_operational_home",
-        lambda: __import__("streamlit").write("OPERATIONAL_HOME_MARKER"),
     )
     monkeypatch.setattr(
         enrichment_ui,
@@ -95,8 +82,6 @@ def test_app_switches_modules_from_operational_home(monkeypatch, tmp_path):
 
     at = AppTest.from_file("app.py", default_timeout=10)
     at.run()
-
-    at.sidebar.radio[0].set_value("Gerador de Memória").run()
 
     assert any("WIZARD_MARKER" in markdown.value for markdown in at.markdown)
 
