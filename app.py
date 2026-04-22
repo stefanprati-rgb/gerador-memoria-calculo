@@ -27,6 +27,9 @@ st.set_page_config(
 inject_styles()
 render_header()
 
+if "previous_app_mode" not in st.session_state:
+    st.session_state.previous_app_mode = "Operação"
+
 # --- BARRA LATERAL ---
 st.sidebar.header("Arquivos")
 render_admin_panel()
@@ -85,6 +88,11 @@ if base_file and template_file:
             key="app_mode",
         )
         st.sidebar.markdown("---")
+
+        if mode != st.session_state.previous_app_mode:
+            if mode == "Gerador de Memória" and st.session_state.previous_app_mode != "Gerador de Memória":
+                st.session_state.wizard_step = 1
+            st.session_state.previous_app_mode = mode
 
         if mode == "Operação":
             render_operational_home()

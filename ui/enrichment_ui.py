@@ -50,10 +50,12 @@ def render_enrichment_wizard(orchestrator):
                 if selected_existing:
                     st.session_state.active_profile = selected_existing
                     active_profile = selected_existing
+            else:
+                st.caption("Nenhum perfil salvo encontrado ainda. Informe um nome para começar um cadastro novo.")
 
         with col_p2:
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Carregar Dados", use_container_width=True, type="primary", icon="📁"):
+            if st.button("Carregar Dados", width="stretch", type="primary", icon="📁"):
                 if active_profile:
                     st.session_state.active_profile = active_profile
                     profile_result = enrichment_service.load_mapping(active_profile)
@@ -89,7 +91,7 @@ def render_enrichment_wizard(orchestrator):
         uploaded_file = st.file_uploader("Upload de Planilha de Metadados", type=["xlsx", "csv"], key="bulk_upload")
         replace_all = st.checkbox("⚠️ Substituir todos os dados existentes deste perfil?", value=False, help="Se marcado, limpa o cadastro atual do perfil antes de subir o novo arquivo.")
 
-        if st.button("💾 Salvar Planilha na Memória do Sistema", type="primary", use_container_width=True, icon="🚀"):
+        if st.button("💾 Salvar Planilha na Memória do Sistema", type="primary", width="stretch", icon="🚀"):
             if uploaded_file:
                 try:
                     # Carregar arquivo
@@ -156,7 +158,7 @@ def render_enrichment_wizard(orchestrator):
     edited_df = st.data_editor(
         current_mapping,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             ENRICHMENT_KEY: st.column_config.TextColumn("No. UC (ID)", disabled=False, required=True),
@@ -166,7 +168,7 @@ def render_enrichment_wizard(orchestrator):
         key=f"editor_meta_{profile_name}"
     )
 
-    if st.button("💾 Salvar Alterações Manuais", type="primary", use_container_width=True, icon="✅"):
+    if st.button("💾 Salvar Alterações Manuais", type="primary", width="stretch", icon="✅"):
         if enrichment_service.save_mapping(profile_name, edited_df):
             st.session_state.mapping_df = edited_df
             st.success("Alterações manuais salvas com sucesso.")

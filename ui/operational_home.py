@@ -56,11 +56,12 @@ def render_operational_home() -> None:
     st.markdown('<div class="ops-section-title">Próximas ações</div>', unsafe_allow_html=True)
     action_col_1, action_col_2 = st.columns(2)
     with action_col_1:
-        if st.button("Ir para Geração", use_container_width=True, type="primary"):
+        if st.button("Ir para Geração", width="stretch", type="primary"):
             st.session_state.app_mode = "Gerador de Memória"
+            st.session_state.wizard_step = 1
             st.rerun()
     with action_col_2:
-        if st.button("Ir para Enriquecimento", use_container_width=True):
+        if st.button("Ir para Enriquecimento", width="stretch"):
             st.session_state.app_mode = "Enriquecimento de Dados"
             st.rerun()
 
@@ -95,4 +96,4 @@ def render_operational_home() -> None:
 
     if pending_count > 0 and pendencias.get("pendencias"):
         st.markdown('<div class="ops-section-title">Amostra de pendências</div>', unsafe_allow_html=True)
-        st.dataframe(pendencias["pendencias"][:10], use_container_width=True, hide_index=True)
+        st.dataframe(pendencias["pendencias"][:10], width="stretch", hide_index=True)

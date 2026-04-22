@@ -144,13 +144,13 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
             cols_batch = st.columns([0.6, 0.4])
             with cols_batch[1]:
                 if len(unselected_clients) > 1:
-                    if st.button(f"Adicionar {len(unselected_clients)} variações", key=f"wiz_add_all_{group.id}", use_container_width=True):
+                    if st.button(f"Adicionar {len(unselected_clients)} variações", key=f"wiz_add_all_{group.id}", width="stretch"):
                         select_clients(group.id, group.clients + unselected_clients)
                         st.rerun()
             
             st.markdown("<div style='max-height: 180px; overflow-y: auto; padding: 5px; border: 1px solid rgba(0,0,0,0.05); border-radius: 8px;'>", unsafe_allow_html=True)
             for client in unselected_clients:
-                 if st.button(f"+ {client}", key=f"wiz_add_btn_{group.id}_{safe_key(client)}", use_container_width=True):
+                 if st.button(f"+ {client}", key=f"wiz_add_btn_{group.id}_{safe_key(client)}", width="stretch"):
                      update_group_clients(group.id, client, True)
                      st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
@@ -173,17 +173,17 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                 st.markdown(f"<p style='font-size: 0.9rem; margin-top: 5px;'><b>Selecionados:</b> {len(group.clients)} clientes</p>", unsafe_allow_html=True)
             
             with col_clr:
-                if st.button("Limpar", key=f"wiz_btn_clear_{group.id}", use_container_width=True):
+                if st.button("Limpar", key=f"wiz_btn_clear_{group.id}", width="stretch"):
                     clear_group_clients(group.id)
                     st.rerun()
             
             with col_save_pop:
                 # NOVO: Popover para salvar grupo (Premium Minimalism)
                 if hasattr(st, "popover"):
-                    with st.popover("💾 Salvar", use_container_width=True):
+                    with st.popover("💾 Salvar", width="stretch"):
                         st.markdown("<p style='font-size: 0.85rem; font-weight: bold;'>Novo Grupo de Clientes</p>", unsafe_allow_html=True)
                         new_group_name = st.text_input("Nome do Grupo", key=f"wiz_new_grp_name_{group.id}", placeholder="Ex: Clientes Setor Norte...")
-                        if st.button("Salvar Agora", key=f"wiz_save_grp_btn_{group.id}", type="primary", use_container_width=True):
+                        if st.button("Salvar Agora", key=f"wiz_save_grp_btn_{group.id}", type="primary", width="stretch"):
                             if new_group_name:
                                 try:
                                     if save_client_group(new_group_name, group.clients):
@@ -222,7 +222,7 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
     st.divider()
     _, col_next = st.columns([0.7, 0.3])
     with col_next:
-        if st.button("Próximo →", type="primary", use_container_width=True, disabled=len(group.clients) == 0):
+        if st.button("Próximo →", type="primary", width="stretch", disabled=len(group.clients) == 0):
             if group.is_auto_name:
                 suggested = generate_suggested_filename(group.name, group.clients, group.periods)
                 update_group_name(group.id, suggested)
@@ -320,11 +320,11 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
     st.divider()
     col_back, _, col_next = st.columns([0.3, 0.4, 0.3])
     with col_back:
-        if st.button("← Voltar", use_container_width=True):
+        if st.button("← Voltar", width="stretch"):
             st.session_state.wizard_step = 1
             st.rerun()
     with col_next:
-        if st.button("Revisar →", type="primary", use_container_width=True, disabled=len(group.periods) == 0):
+        if st.button("Revisar →", type="primary", width="stretch", disabled=len(group.periods) == 0):
             st.session_state.wizard_step = 3
             st.rerun()
 
@@ -366,17 +366,12 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         """,
         unsafe_allow_html=True,
     )
-    metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
-    metric_col_1.metric("Clientes", len(group.clients))
-    metric_col_2.metric("Meses", len(group.periods))
-    metric_col_3.metric("Faturas", metrics.total_invoices)
-
     output_mode_label = "ZIP por período" if len(group.periods) > 1 else "Excel único"
     with st.container(border=True):
         st.markdown(
             """
-            <div class="wiz-panel-title">Decisão de saída</div>
-            <div class="wiz-panel-copy">A interface já calculou o formato final com base no escopo escolhido. O objetivo aqui é evitar surpresa na hora do download.</div>
+            <div class="wiz-panel-title">Resumo da entrega</div>
+            <div class="wiz-panel-copy">Este bloco resume como o arquivo será montado com base nas escolhas abaixo. Ele é apenas informativo.</div>
             """,
             unsafe_allow_html=True,
         )
@@ -400,7 +395,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         col_det, col_mode = st.columns([0.4, 0.6])
         with col_det:
             if hasattr(st, "popover"):
-                with st.popover("🔍 Ver Detalhes", use_container_width=True):
+                with st.popover("🔍 Ver Detalhes", width="stretch"):
                     st.dataframe(metrics.incomplete_details, hide_index=True)
             else:
                 with st.expander("Ver Detalhes"):
@@ -408,14 +403,13 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         
         with col_mode:
             incomplete_filter = st.selectbox(
-                "Filtrar:",
+                "Como tratar registros com pendência",
                 options=["all", "complete_only", "incomplete_only"],
                 format_func=lambda x: {
-                    "all": "Gerar Tudo",
-                    "complete_only": "Somente Completos",
-                    "incomplete_only": "Somente Incompletos"
+                    "all": "Incluir tudo no arquivo",
+                    "complete_only": "Emitir apenas registros completos",
+                    "incomplete_only": "Emitir apenas itens para revisão"
                 }[x],
-                label_visibility="collapsed",
                 key="wiz_incomplete_filter"
             )
     else:
@@ -429,15 +423,15 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
     with st.container(border=True):
         st.markdown(
             """
-            <div class="wiz-panel-title">Opções de apresentação</div>
-            <div class="wiz-panel-copy">Estas escolhas alteram a forma de entrega do arquivo, não o conjunto base de dados selecionado.</div>
+            <div class="wiz-panel-title">Formato do arquivo</div>
+            <div class="wiz-panel-copy">Estas escolhas alteram a estrutura de entrega do arquivo, não o conjunto de clientes e períodos já definidos.</div>
             """,
             unsafe_allow_html=True,
         )
         col_apres1, col_apres2 = st.columns(2)
         with col_apres1:
             new_tipo = st.radio(
-                "Tipo de Apresentação",
+                "Estrutura do arquivo",
                 options=["Separadores Múltiplos", "Tabela Única"],
                 index=0 if group.tipo_apresentacao == "Separadores Múltiplos" else 1,
                 key=f"wiz_tipo_apres_{group.id}"
@@ -455,7 +449,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 set_incluir_resumo(group.id, new_resumo)
 
             new_pendencias = st.checkbox(
-                "Gerar apenas faturas pendentes (Ocultar 'Pago')",
+                "Mostrar apenas faturas pendentes",
                 value=group.somente_pendencias,
                 key=f"wiz_pendencias_{group.id}"
             )
@@ -463,7 +457,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 set_somente_pendencias(group.id, new_pendencias)
 
             new_auditoria = st.checkbox(
-                "Separar linhas de Auditoria (Regras/Filhas)",
+                "Separar registros de auditoria em bloco próprio",
                 value=group.separar_auditoria,
                 key=f"wiz_auditoria_{group.id}"
             )
@@ -475,11 +469,11 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         st.markdown(
             """
             <div class="wiz-panel-title">Geração final</div>
-            <div class="wiz-panel-copy">Se o escopo estiver correto, siga com a construção do arquivo. O download é liberado no mesmo passo, sem navegação extra.</div>
+            <div class="wiz-panel-copy">Se o escopo estiver correto, prepare o arquivo para download. O arquivo final é liberado no mesmo passo, sem navegação extra.</div>
             """,
             unsafe_allow_html=True,
         )
-    if st.button("Gerar Memória de Cálculo", type="primary", use_container_width=True, icon="✨"):
+    if st.button("Preparar Arquivo para Download", type="primary", width="stretch", icon="✨"):
         # Enriquecimento Automático: busca TODOS os perfis de metadados registrados no sistema
         enrichment_df = None
         try:
@@ -553,7 +547,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 data=final_data,
                 file_name=payload.filename,
                 mime=payload.mime_type,
-                use_container_width=True,
+                width="stretch",
                 type="primary"
             )
         else:
@@ -584,11 +578,11 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
     st.divider()
     col_back, col_restart = st.columns([0.5, 0.5])
     with col_back:
-        if st.button("← Ajustar Período", use_container_width=True):
+        if st.button("← Ajustar Período", width="stretch"):
             st.session_state.wizard_step = 2
             st.rerun()
     with col_restart:
-        if st.button("Reiniciar Wizard", use_container_width=True, help="Limpa tudo e volta ao passo 1"):
+        if st.button("Começar de Novo", width="stretch", help="Limpa a seleção atual e volta ao primeiro passo"):
             clear_group_clients(group.id)
             update_group_periods(group.id, [])
             st.session_state.wizard_step = 1

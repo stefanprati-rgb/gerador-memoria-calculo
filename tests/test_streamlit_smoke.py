@@ -1,6 +1,7 @@
 import sys
 from unittest.mock import MagicMock
 
+import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 sys.modules["firebase_admin"] = MagicMock()
@@ -22,6 +23,12 @@ def _render_wizard_test_app(available_clients, available_periods, orch):
     from ui.groups_wizard_ui import render_groups_section_wizard
 
     render_groups_section_wizard(available_clients, available_periods, orch)
+
+
+def _render_enrichment_test_app(orch):
+    from ui.enrichment_ui import render_enrichment_wizard
+
+    render_enrichment_wizard(orch)
 
 
 class FakeOrchestrator:
@@ -77,11 +84,45 @@ def test_wizard_step_3_generate_smoke(monkeypatch):
     at.session_state["wizard_step"] = 3
     at.run()
 
-    generate_button = next(button for button in at.button if button.label == "Gerar Memória de Cálculo")
+    generate_button = next(button for button in at.button if button.label == "Preparar Arquivo para Download")
     generate_button.click().run()
 
-    assert any(metric.value == "3" for metric in at.metric)
     assert any("faturas precisam de atenção" in info.value for info in at.info)
     assert any("Planilha pronta em" in toast.value for toast in at.toast)
     assert orch.generate_calls == 1
     assert not at.error
+
+
+def test_enrichment_empty_state_smoke(monkeypatch):
+    import ui.enrichment_ui as enrichment_ui
+
+    monkeypatch.setattr(enrichment_ui.enrichment_service, "list_profiles", lambda: [])
+
+    at = AppTest.from_function(_render_enrichment_test_app, args=(object(),))
+    at.run()
+
+    assert any("Nenhum perfil salvo encontrado" in caption.value for caption in at.caption)
+    assert any("Selecione ou crie um perfil" in info.value for info in at.info)
+
+
+def test_enrichment_load_profile_smoke(monkeypatch):
+    import ui.enrichment_ui as enrichment_ui
+
+    monkeypatch.setattr(enrichment_ui.enrichment_service, "list_profiles", lambda: ["Perfil A"])
+    monkeypatch.setattr(
+        enrichment_ui.enrichment_service,
+        "load_mapping",
+        lambda profile_name: pd.DataFrame(
+            [{"No. UC": "123", "Razão Social": "Cliente A", "Número da Conta": "999"}]
+        ),
+    )
+    monkeypatch.setattr(enrichment_ui.time, "sleep", lambda _: None)
+
+    at = AppTest.from_function(_render_enrichment_test_app, args=(object(),))
+    at.run()
+
+    at.text_input[0].set_value("Perfil A")
+    at.button[0].click().run()
+
+    assert any("pronto para edição" in success.value for success in at.success)
+    assert any("Salvar" in button.label for button in at.button)
