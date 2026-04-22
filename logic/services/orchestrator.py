@@ -32,6 +32,24 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def _parse_br_number(value: Any, default: float | None = None) -> float | None:
+    if pd.isna(value):
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    s = str(value).strip()
+    if s in {"", "-", "--", " - "}:
+        return default
+
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+
+    try:
+        return float(s)
+    except ValueError:
+        return default
+
 
 class Orchestrator:
     """Serviço central para orquestrar a geração de planilhas com suporte a agrupamento."""
@@ -188,20 +206,7 @@ class Orchestrator:
                 # Somar as colunas financeiras (min_count=1 garante que se tudo for NaN, fica NaN)
                 for col in SUM_COLUMNS:
                     if col in group_df.columns:
-                        # Limpeza de valores financeiros no padrão brasileiro (ex: 1.234,56)
-                        def _clean_finance_val(v):
-                            if pd.isna(v): return v
-                            if isinstance(v, (int, float)): return v
-                            s = str(v).strip()
-                            # Trata hífens ou células vazias como zero para fins de soma
-                            if s in ["-", "--", " - ", ""]: 
-                                return "0"
-                            if "," in s:
-                                # Se tem vírgula, remove pontos de milhar e troca vírgula decimal por ponto
-                                return s.replace(".", "").replace(",", ".")
-                            return s
-
-                        series_clean = group_df[col].apply(_clean_finance_val)
+                        series_clean = group_df[col].apply(lambda v: _parse_br_number(v, default=0.0))
                         parent_row[col] = pd.to_numeric(series_clean, errors="coerce").sum(min_count=1)
                 
                 # Juntar a linha pai e as linhas filhas do grupo (Preserva a integridade: Pai + Filhas)
@@ -269,10 +274,16 @@ class Orchestrator:
             parent_indices = df.index[parent_mask].tolist()
             for pi in parent_indices:
                 loc = df.index.get_loc(pi)
-                # Faturas filhas são todas as linhas não-pai após o pai até o próximo pai (ou fim)
-                remaining = df.iloc[loc + 1:]
-                next_parents = remaining.index[remaining.get(PARENT_ROW_FLAG, pd.Series(False, index=remaining.index)).astype(bool)]
-                end_loc = df.index.get_loc(next_parents[0]) if len(next_parents) > 0 else len(df)
+                after = df.iloc[loc + 1:]
+                
+                stop_mask = (
+                    after.get(PARENT_ROW_FLAG, pd.Series(False, index=after.index)).astype(bool)
+                    | after.get(SEPARATOR_ROW_FLAG, pd.Series(False, index=after.index)).astype(bool)
+                )
+                
+                stop_positions = stop_mask[stop_mask].index
+                end_loc = df.index.get_loc(stop_positions[0]) if len(stop_positions) > 0 else len(df)
+                
                 child_labels = df.iloc[loc + 1:end_loc][CLASSIFICATION_COL]
                 if not child_labels.empty:
                     counts = child_labels.value_counts()
@@ -286,7 +297,7 @@ class Orchestrator:
         )
         return df
 
-    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None) -> Optional[bytes]:
+    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None, somente_pendencias: bool = False) -> Optional[bytes]:
         """
         Filtra a base, aplica agrupamento e gera o arquivo Excel com os dados mapeados.
         
@@ -325,16 +336,24 @@ class Orchestrator:
         # Filtrar por completude se solicitado
         if incomplete_filter == "complete_only":
             mask = self._incomplete_mask(filtered_df)
-            filtered_df = filtered_df[~mask]
+            filtered_df = filtered_df.loc[~mask].copy()
             logger.info("Filtro 'complete_only': %d linhas removidas por incompletude.", mask.sum())
         elif incomplete_filter == "incomplete_only":
             mask = self._incomplete_mask(filtered_df)
-            filtered_df = filtered_df[mask]
+            filtered_df = filtered_df.loc[mask].copy()
             logger.info("Filtro 'incomplete_only': %d linhas incompletas mantidas.", mask.sum())
 
         if filtered_df.empty:
             logger.warning("Nenhum dado restante após filtro de completude.")
             return None
+
+        # Ordenar ANTES do agrupamento por Economia Gerada descendente ("Ganho total Padrão")
+        # Isso garante que a ordenação global preserve os blocos de agrupamento (Pai+Filhas ficam juntos).
+        if "Ganho total Padrão" in filtered_df.columns:
+            filtered_df["_temp_sort"] = filtered_df["Ganho total Padrão"].apply(_parse_br_number, default=0.0)
+            filtered_df = filtered_df.sort_values(by="_temp_sort", ascending=False)
+            filtered_df = filtered_df.drop(columns=["_temp_sort"])
+            logger.info("Ordenação global por 'Economia Gerada' aplicada (antes do agrupamento).")
 
 
         # Fluxo de Layout Único (14 Colunas + Classificação)
@@ -370,13 +389,20 @@ class Orchestrator:
         # 5. Aplicar Regras Rigorosas de Pagamento (Saneamento de Dados)
         processed_df = enforce_payment_rules(processed_df)
 
+        # 6. Quick Wins: Filtro de Pendências
+        if somente_pendencias and "Status Pos-Faturamento" in processed_df.columns:
+            # Filtra linhas onde o status seja "Pago"
+            is_pago = processed_df["Status Pos-Faturamento"].astype(str).str.strip().str.lower() == "pago"
+            processed_df = processed_df.loc[~is_pago].copy()
+            logger.info("Filtro de pendências ativado: Removidas faturas com status 'Pago'. Linhas restantes: %d", len(processed_df))
+
         writer = TemplateExcelWriter(self.template_file)
         excel_bytes = writer.generate_bytes(processed_df, full_mapping)
 
         logger.info("Planilha gerada com sucesso (%d bytes).", len(excel_bytes))
         return excel_bytes
 
-    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None) -> Optional[bytes]:
+    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None, somente_pendencias: bool = False) -> Optional[bytes]:
         """
         Recebe uma lista de dicionários com chaves 'name', 'clients' (List[str]), e 'periods' (List[str]).
         Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados com suporte a enriquecimento.
@@ -404,7 +430,8 @@ class Orchestrator:
                     periods, 
                     incomplete_filter=incomplete_filter, 
                     group_by_distributor=group_by_distributor,
-                    enrichment_df=enrichment_df
+                    enrichment_df=enrichment_df,
+                    somente_pendencias=somente_pendencias
                 )
                 if excel_bytes:
                     filename = group_name if group_name.endswith(".xlsx") else f"{group_name}.xlsx"

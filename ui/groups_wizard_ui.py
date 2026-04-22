@@ -9,7 +9,7 @@ from typing import List, Any
 from ui.state.group_state import (
     GroupState, initialize_groups, add_group, remove_group, 
     update_group_name, update_group_clients, clear_group_clients, 
-    select_clients, update_group_periods
+    select_clients, update_group_periods, get_active_group
 )
 from ui.utils.search_utils import build_search_index, filter_values
 from ui.utils.format_utils import format_period_label, safe_key, sanitize_filename, generate_suggested_filename
@@ -21,9 +21,10 @@ import pandas as pd
 def _get_wizard_group() -> GroupState:
     """O Wizard foca em apenas 1 grupo (projeto) por vez."""
     initialize_groups()
-    if not st.session_state.groups:
-        add_group()
-    return st.session_state.groups[0]
+    active_group = get_active_group()
+    if not active_group:
+        active_group = add_group()
+    return active_group
 
 def render_groups_section_wizard(available_clients: List[str], available_periods: List[str], orch: Any) -> None:
     """Renderiza a interface guiada passo a passo (Wizard)."""
@@ -101,7 +102,7 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                                     if not isinstance(res, (pd.Series, pd.DataFrame)):
                                         val = res
                                 
-                                st.session_state.group_state.group_by_distributor = bool(val)
+                                group.group_by_distributor = bool(val)
                         except Exception as profile_err:
                             logger.error("Erro ao sincronizar regras de perfil: %s", profile_err)
                             
@@ -329,6 +330,12 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
 
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
+    group.somente_pendencias = st.checkbox(
+        "Gerar apenas faturas pendentes (Ocultar 'Pago')",
+        value=group.somente_pendencias,
+        key=f"wiz_pendencias_{group.id}"
+    )
+
     # --- BOTÃO PRINCIPAL (O Caminho Feliz) ---
     if st.button("Gerar Memória de Cálculo", type="primary", use_container_width=True, icon="✨"):
         # Enriquecimento Automático: busca TODOS os perfis de metadados registrados no sistema
@@ -354,7 +361,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                             [period],
                             incomplete_filter=incomplete_filter,
                             group_by_distributor=group.group_by_distributor,
-                            enrichment_df=enrichment_df
+                            enrichment_df=enrichment_df,
+                            somente_pendencias=group.somente_pendencias
                         )
                         if period_excel:
                             f_name = f"{sanitize_filename(group.name)}_{period_label}.xlsx"
@@ -369,7 +377,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                     group.periods, 
                     incomplete_filter=incomplete_filter,
                     group_by_distributor=group.group_by_distributor,
-                    enrichment_df=enrichment_df
+                    enrichment_df=enrichment_df,
+                    somente_pendencias=group.somente_pendencias
                 )
                 is_zip = False
             
