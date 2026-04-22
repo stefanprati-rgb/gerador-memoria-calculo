@@ -67,6 +67,24 @@ def update_group_name(group_id: int, new_name: str) -> None:
     if group:
         group.name = new_name.strip() or f"Grupo_{group_id}"
 
+def update_group_name_if_auto(group_id: int) -> None:
+    """Se o grupo estiver com nomeação automática, recalcula e atualiza o nome."""
+    group = get_group(group_id)
+    if group and group.is_auto_name:
+        from ui.utils.format_utils import generate_suggested_filename
+        suggested = generate_suggested_filename(group.name, group.clients, group.periods)
+        group.name = suggested
+
+def set_custom_group_name(group_id: int, new_name: str) -> None:
+    """O usuário digitou um nome manualmente. Avalia se desliga o modo automático."""
+    group = get_group(group_id)
+    if group:
+        from ui.utils.format_utils import generate_suggested_filename
+        current_suggestion = generate_suggested_filename(group.name, group.clients, group.periods)
+        if new_name != current_suggestion:
+            group.is_auto_name = False
+        group.name = new_name.strip() or f"Grupo_{group_id}"
+
 def update_group_clients(group_id: int, client: str, checked: bool) -> None:
     """Adiciona ou remove um cliente da seleção do grupo de forma imutável."""
     group = get_group(group_id)

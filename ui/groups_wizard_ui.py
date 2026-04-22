@@ -234,10 +234,8 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
         )
         if new_periods != group.periods:
             update_group_periods(group.id, list(new_periods))
-            # Se ainda estiver no modo automático, sugerir novo nome baseado nos períodos
-            if group.is_auto_name:
-                suggested = generate_suggested_filename(group.name, group.clients, list(new_periods))
-                update_group_name(group.id, suggested)
+            from ui.state.group_state import update_group_name_if_auto
+            update_group_name_if_auto(group.id)
             st.rerun()
     else:
         new_periods = st.multiselect(
@@ -262,13 +260,8 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
         help="Este será o nome do arquivo .xlsx gerado."
     )
     if new_name != group.name:
-        # Se o usuário editar manualmente, desativar o modo automático
-        if group.is_auto_name:
-            # Só desativa se o que ele digitou for diferente da sugestão que teríamos agora
-            current_suggestion = generate_suggested_filename(group.name, group.clients, group.periods)
-            if new_name != current_suggestion:
-                group.is_auto_name = False
-        update_group_name(group.id, new_name)
+        from ui.state.group_state import set_custom_group_name
+        set_custom_group_name(group.id, new_name)
     
     # Controles
     st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
@@ -287,33 +280,31 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
     """Resumo e botão Final de Geração. Esconde engrenagens em 'Avançado'."""
     st.markdown("<h4 style='margin-bottom: 10px;'>3. Revisão & Geração</h4>", unsafe_allow_html=True)
     
+    from ui.viewmodels.wizard_viewmodel import WizardViewModel
+    vm = WizardViewModel(orch)
+    metrics = vm.get_review_metrics(group.clients, group.periods)
+
     # Card de Resumo Minimalista
     with st.container(border=True):
         c1, c2, c3 = st.columns(3)
         c1.metric("Clientes", len(group.clients))
         c2.metric("Meses", len(group.periods))
-        
-        count = orch.count_filtered(group.clients, group.periods)
-        c3.metric("Faturas", count)
+        c3.metric("Faturas", metrics.total_invoices)
 
     # --- TRATAMENTO DE INCOMPLETOS (Fim do Data Dump) ---
-    incomplete_info = orch.check_incomplete_rows(group.clients, group.periods)
-    incomplete_count = incomplete_info["registros_incompletos"]
-    complete_count = incomplete_info["total_registros"] - incomplete_count
-    
     incomplete_filter = "all"  # default
     
-    if incomplete_count > 0:
-        st.info(f"💡 **{incomplete_count}** faturas precisam de atenção (vencimento ausente).")
+    if metrics.incomplete_count > 0:
+        st.info(f"💡 **{metrics.incomplete_count}** faturas precisam de atenção (vencimento ausente).")
         
         col_det, col_mode = st.columns([0.4, 0.6])
         with col_det:
             if hasattr(st, "popover"):
                 with st.popover("🔍 Ver Detalhes", use_container_width=True):
-                    st.dataframe(incomplete_info["ucs_afetadas"], hide_index=True)
+                    st.dataframe(metrics.incomplete_details, hide_index=True)
             else:
                 with st.expander("Ver Detalhes"):
-                    st.dataframe(incomplete_info["ucs_afetadas"], hide_index=True)
+                    st.dataframe(metrics.incomplete_details, hide_index=True)
         
         with col_mode:
             incomplete_filter = st.selectbox(
@@ -370,61 +361,52 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
 
         start_time = time.time()
         with st.spinner("Refinando dados e construindo Excel..."):
-            if len(group.periods) > 1:
+            payload = vm.prepare_generation_payload(group, incomplete_filter, enrichment_df)
+            
+            if payload.is_multiplexed:
                 # Geração Multiplexada: Um arquivo por referência dentro de um ZIP
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
-                    for period in group.periods:
+                    for period in payload.periods:
                         period_label = format_period_label(period).replace("/", "_")
                         period_excel = orch.generate(
-                            group.clients,
+                            payload.clients,
                             [period],
-                            incomplete_filter=incomplete_filter,
-                            group_by_distributor=group.group_by_distributor,
-                            enrichment_df=enrichment_df,
-                            somente_pendencias=group.somente_pendencias,
-                            tipo_apresentacao=group.tipo_apresentacao,
-                            incluir_resumo=group.incluir_resumo,
-                            separar_auditoria=group.separar_auditoria
+                            incomplete_filter=payload.incomplete_filter,
+                            group_by_distributor=payload.group_by_distributor,
+                            enrichment_df=payload.enrichment_df,
+                            somente_pendencias=payload.somente_pendencias,
+                            tipo_apresentacao=payload.tipo_apresentacao,
+                            incluir_resumo=payload.incluir_resumo,
+                            separar_auditoria=payload.separar_auditoria
                         )
                         if period_excel:
                             f_name = f"{sanitize_filename(group.name)}_{period_label}.xlsx"
                             z.writestr(f_name, period_excel)
                 
                 final_data = zip_buffer.getvalue()
-                is_zip = True
             else:
                 # Geração Individual: Um único arquivo Excel
                 final_data = orch.generate(
-                    group.clients, 
-                    group.periods, 
-                    incomplete_filter=incomplete_filter,
-                    group_by_distributor=group.group_by_distributor,
-                    enrichment_df=enrichment_df,
-                    somente_pendencias=group.somente_pendencias,
-                    tipo_apresentacao=group.tipo_apresentacao,
-                    incluir_resumo=group.incluir_resumo,
-                    separar_auditoria=group.separar_auditoria
+                    payload.clients, 
+                    payload.periods, 
+                    incomplete_filter=payload.incomplete_filter,
+                    group_by_distributor=payload.group_by_distributor,
+                    enrichment_df=payload.enrichment_df,
+                    somente_pendencias=payload.somente_pendencias,
+                    tipo_apresentacao=payload.tipo_apresentacao,
+                    incluir_resumo=payload.incluir_resumo,
+                    separar_auditoria=payload.separar_auditoria
                 )
-                is_zip = False
             
         elapsed = time.time() - start_time
         if final_data:
-            if is_zip:
-                filename = f"{sanitize_filename(group.name)}.zip"
-                mime_type = "application/zip"
-                label = "📥 Baixar Arquivo ZIP"
-            else:
-                filename = f"{sanitize_filename(group.name)}.xlsx"
-                mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                label = "📥 Baixar Arquivo Excel"
-
             st.toast(f"Planilha pronta em {elapsed:.1f}s!", icon="✅")
             st.download_button(
-                label=label,
+                label=f"📥 Baixar Arquivo {'ZIP' if payload.is_multiplexed else 'Excel'}",
                 data=final_data,
-                file_name=filename,
-                mime=mime_type,
+                file_name=payload.filename,
+                mime=payload.mime_type,
                 use_container_width=True,
                 type="primary"
             )

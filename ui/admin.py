@@ -23,27 +23,27 @@ def render_admin_panel():
     with st.sidebar.expander("Atualizar Bases (Admin)", expanded=False):
         admin_senha = st.text_input("Senha Admin", type="password")
         if admin_senha == settings.admin_password:
-            # Validação de Ambiente Crítica
-            try:
-                # Usa 'development' por padrão para não bloquear totalmente se o Firebase não estiver configurado
-                # mas o admin_password vai ser checado localmente
-                status = settings.validate_for_runtime(mode="development")
-                if not status.get("admin_secure"):
-                    st.warning("⚠️ Segurança: A senha de administrador está usando o valor padrão inseguro ('mudar_aqui'). Configure a variável ADMIN_PASSWORD.")
-            except ConfigurationError as e:
-                st.error(f"🔒 Bloqueio de Segurança Operacional:\n{e}")
+            from ui.viewmodels.admin_viewmodel import AdminViewModel
+            
+            vm = AdminViewModel(mode="development")
+            state = vm.get_state()
+            
+            if state.fatal_error:
+                st.error(f"🔒 {state.fatal_error}")
                 return
+                
+            if state.warning_message:
+                st.warning(f"⚠️ {state.warning_message}")
 
             # === FEATURE: Sincronização Local Rápida ===
-            path_rede = settings.network_balanco_path
-            if status.get("network_ready") and path_rede:
+            if state.can_sync_local and state.local_path:
                 st.markdown("---")
                 st.markdown("**Sincronização Automática**")
-                st.info(f"O Balanço Energético foi encontrado no caminho configurado.")
+                st.info("O Balanço Energético foi encontrado no caminho configurado.")
                 
                 if st.button("Atualizar Bases Diretamente", width='stretch', type="primary", icon="⬇️"):
                     with st.spinner("Puxando arquivo ultrarrápido da rede local..."):
-                        success, _ = build_consolidated_cache_from_local_network(path_rede)
+                        success, _ = build_consolidated_cache_from_local_network(state.local_path)
                         if success:
                             st.success("Base sincronizada da rede com sucesso.")
                             notify_completion("Base sincronizada da rede.")
@@ -66,15 +66,9 @@ def render_admin_panel():
             if st.button("Sincronizar e Processar", width='stretch', disabled=not can_sync, icon="⚙️"):
                 with st.spinner("Processando e cruzando dados. Isso pode levar alguns minutos..."):
                     # Tentar inicializar Firebase para backup (opcional)
-                    fb = None
-                    try:
-                        fb = FirebaseAdapter(settings.firebase_credentials_path, settings.firebase_storage_bucket)
-                    except FirebaseAdapterError as e:
-                        fb = None
-                        st.warning(f"Backup na nuvem indisponível: {e}")
-                    except Exception as e:
-                        fb = None
-                        st.error(f"Erro inesperado no adaptador Firebase: {e}")
+                    fb, fb_warn = vm.initialize_firebase()
+                    if fb_warn:
+                        st.warning(fb_warn)
                     
                     # Processar localmente (Local First) + backup opcional no Firebase
                     gestao_bytes = gestao_up.getvalue()
