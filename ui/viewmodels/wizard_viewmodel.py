@@ -21,6 +21,7 @@ class GenerationPayload:
     tipo_apresentacao: str
     incluir_resumo: bool
     separar_auditoria: bool
+    sort_by: str
     is_multiplexed: bool
     filename: str
     mime_type: str
@@ -72,6 +73,7 @@ class WizardViewModel:
             tipo_apresentacao=group.tipo_apresentacao,
             incluir_resumo=group.incluir_resumo,
             separar_auditoria=group.separar_auditoria,
+            sort_by=group.sort_by,
             is_multiplexed=is_multiplexed,
             filename=filename,
             mime_type=mime_type

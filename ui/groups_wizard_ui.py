@@ -432,7 +432,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
     from ui.state.group_state import (
-        set_grouping_mode, set_include_child_rows, set_tipo_apresentacao, set_incluir_resumo, set_somente_pendencias, set_separar_auditoria
+        set_grouping_mode, set_include_child_rows, set_tipo_apresentacao, set_incluir_resumo, set_somente_pendencias, set_separar_auditoria, set_sort_by
     )
     with st.container(border=True):
         st.markdown(
@@ -477,6 +477,16 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
             )
             if new_tipo != group.tipo_apresentacao:
                 set_tipo_apresentacao(group.id, new_tipo)
+
+            new_sort = st.selectbox(
+                "Ordenar resultados por",
+                options=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"],
+                index=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"].index(group.sort_by),
+                key=f"wiz_sort_{group.id}",
+                help="Define a ordem das faturas dentro de cada bloco ou aba."
+            )
+            if new_sort != group.sort_by:
+                set_sort_by(group.id, new_sort)
 
         with col_apres2:
             new_include_child_rows = st.checkbox(
@@ -555,7 +565,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                             somente_pendencias=payload.somente_pendencias,
                             tipo_apresentacao=payload.tipo_apresentacao,
                             incluir_resumo=payload.incluir_resumo,
-                            separar_auditoria=payload.separar_auditoria
+                            separar_auditoria=payload.separar_auditoria,
+                            sort_by=payload.sort_by
                         )
                         if period_excel:
                             f_name = f"{sanitize_filename(group.name)}_{period_label}.xlsx"
@@ -574,7 +585,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                     somente_pendencias=payload.somente_pendencias,
                     tipo_apresentacao=payload.tipo_apresentacao,
                     incluir_resumo=payload.incluir_resumo,
-                    separar_auditoria=payload.separar_auditoria
+                    separar_auditoria=payload.separar_auditoria,
+                    sort_by=payload.sort_by
                 )
             
         elapsed = time.time() - start_time

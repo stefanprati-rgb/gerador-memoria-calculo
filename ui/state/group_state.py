@@ -157,6 +157,13 @@ def set_somente_pendencias(group_id: int, value: bool) -> None:
         group.somente_pendencias = value
 
 def set_separar_auditoria(group_id: int, value: bool) -> None:
-    group = get_group(group_id)
-    if group:
-        group.separar_auditoria = value
+    for g in st.session_state.groups:
+        if g.id == group_id:
+            g.separar_auditoria = value
+            break
+
+def set_sort_by(group_id: int, value: str) -> None:
+    for g in st.session_state.groups:
+        if g.id == group_id:
+            g.sort_by = value
+            break
