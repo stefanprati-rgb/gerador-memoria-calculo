@@ -9,8 +9,7 @@ sys.modules["firebase_admin.storage"] = MagicMock()
 sys.modules["firebase_admin.firestore"] = MagicMock()
 
 from ui.state.group_state import GroupState
-from ui.viewmodels.admin_viewmodel import AdminState
-from ui.viewmodels.admin_viewmodel import AdminViewModel
+from ui.viewmodels.admin_viewmodel import AdminState, AdminViewModel
 
 
 def _render_admin_test_app():
@@ -46,10 +45,7 @@ class FakeOrchestrator:
         return b"fake-excel-bytes"
 
 
-def test_admin_login_feedback_smoke(monkeypatch):
-    import ui.admin as admin_ui
-
-    monkeypatch.setattr(admin_ui, "_get_current_admin_password", lambda: "secret")
+def test_admin_panel_smoke(monkeypatch):
     monkeypatch.setattr(
         AdminViewModel,
         "get_state",
@@ -59,17 +55,8 @@ def test_admin_login_feedback_smoke(monkeypatch):
     at = AppTest.from_function(_render_admin_test_app)
     at.run()
 
-    at.sidebar.text_input[0].set_value("wrong").run()
-    submit_button = next(button for button in at.sidebar.button if button.label == "Entrar")
-    submit_button.click().run()
-
-    assert any("Senha inválida." in error.value for error in at.sidebar.error)
-
-    at.sidebar.text_input[0].set_value("secret").run()
-    submit_button = next(button for button in at.sidebar.button if button.label == "Entrar")
-    submit_button.click().run()
-
-    assert any(button.label == "Sair" for button in at.sidebar.button)
+    assert any("Sincronização via Upload" in markdown.value for markdown in at.sidebar.markdown)
+    assert any("Carregue ambas as planilhas" in caption.value for caption in at.sidebar.caption)
 
 
 def test_wizard_step_3_generate_smoke(monkeypatch):

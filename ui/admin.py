@@ -3,10 +3,8 @@ Painel administrativo para sincronização de bases.
 Extraído de app.py para manter separação de responsabilidades.
 """
 import time
-import unicodedata
 import streamlit as st
 
-from config.settings import settings, Settings
 from logic.services.sync_service import (
     build_consolidated_cache_from_local_network,
     get_pendencias
@@ -16,130 +14,89 @@ import pandas as pd
 from ui.utils.notifications import notify_completion
 
 
-def _is_admin_authenticated() -> bool:
-    return bool(st.session_state.get("admin_authenticated", False))
-
-
-def _set_admin_authenticated(value: bool) -> None:
-    st.session_state.admin_authenticated = value
-
-
-def _normalize_password(value: str) -> str:
-    normalized = unicodedata.normalize("NFKC", value or "")
-    return "".join(ch for ch in normalized.strip() if unicodedata.category(ch) != "Cf")
-
-
-def _get_current_admin_password() -> str:
-    """Recarrega a senha do ambiente para evitar comparação com config stale em memória."""
-    return Settings().admin_password
-
-
 def render_admin_panel():
     """Renderiza o painel admin na sidebar para upload e sincronização de bases."""
     with st.sidebar.expander("Atualizar Bases (Admin)", expanded=False):
-        if not _is_admin_authenticated():
-            with st.form("admin_login_form", clear_on_submit=False):
-                admin_senha = st.text_input("Senha Admin", type="password", key="admin_password_input")
-                submitted = st.form_submit_button("Entrar", use_container_width=True, type="primary")
+        from ui.viewmodels.admin_viewmodel import AdminViewModel
 
-            if submitted:
-                senha_digitada = _normalize_password(admin_senha)
-                senha_configurada = _normalize_password(_get_current_admin_password())
-                if senha_digitada == senha_configurada:
-                    _set_admin_authenticated(True)
-                    st.rerun()
-                else:
-                    st.error("Senha inválida.")
+        vm = AdminViewModel(mode="development")
+        state = vm.get_state()
+
+        if state.fatal_error:
+            st.error(f"🔒 {state.fatal_error}")
             return
 
-        if st.button("Sair", use_container_width=True):
-            _set_admin_authenticated(False)
-            st.session_state.pop("admin_password_input", None)
-            st.rerun()
+        if state.warning_message:
+            st.warning(f"⚠️ {state.warning_message}")
 
-        if _is_admin_authenticated():
-            from ui.viewmodels.admin_viewmodel import AdminViewModel
-            
-            vm = AdminViewModel(mode="development")
-            state = vm.get_state()
-            
-            if state.fatal_error:
-                st.error(f"🔒 {state.fatal_error}")
-                return
-                
-            if state.warning_message:
-                st.warning(f"⚠️ {state.warning_message}")
-
-            # === FEATURE: Sincronização Local Rápida ===
-            if state.can_sync_local and state.local_path:
-                st.markdown("---")
-                st.markdown("**Sincronização Automática**")
-                st.info("O Balanço Energético foi encontrado no caminho configurado.")
-                
-                if st.button("Atualizar Bases Diretamente", width='stretch', type="primary", icon="⬇️"):
-                    with st.spinner("Puxando arquivo ultrarrápido da rede local..."):
-                        success, _ = build_consolidated_cache_from_local_network(state.local_path)
-                        if success:
-                            st.success("Base sincronizada da rede com sucesso.")
-                            notify_completion("Base sincronizada da rede.")
-                            time.sleep(2)
-                            st.rerun()
-                        else:
-                            st.error("Falha ao gerar o cache local a partir da rede. Verifique logs do sistema.")
-
-            # === FEATURE: Sincronização Manual / Nuvem ===
+        # === FEATURE: Sincronização Local Rápida ===
+        if state.can_sync_local and state.local_path:
             st.markdown("---")
-            st.markdown("**Sincronização via Upload**")
-            balanco_up = st.file_uploader("Balanço Energético (.xlsm)", type=["xlsm", "xlsx"])
-            gestao_up = st.file_uploader("Gestão Cobrança (.xlsx)", type=["xlsx"])
-            
-            can_sync = balanco_up is not None and gestao_up is not None
-            
-            if not can_sync:
-                st.caption("Carregue ambas as planilhas para backup e atualização manual.")
+            st.markdown("**Sincronização Automática**")
+            st.info("O Balanço Energético foi encontrado no caminho configurado.")
 
-            if st.button("Sincronizar e Processar", width='stretch', disabled=not can_sync, icon="⚙️"):
-                with st.spinner("Processando e cruzando dados. Isso pode levar alguns minutos..."):
-                    if state.firebase_warning:
-                        st.warning(state.firebase_warning)
-                    
-                    success = vm.process_uploads(balanco_up.getvalue(), gestao_up.getvalue(), state)
-                    
+            if st.button("Atualizar Bases Diretamente", width='stretch', type="primary", icon="⬇️"):
+                with st.spinner("Puxando arquivo ultrarrápido da rede local..."):
+                    success, _ = build_consolidated_cache_from_local_network(state.local_path)
                     if success:
-                        st.success("Bases processadas com sucesso.")
-                        notify_completion("Bases processadas e arquivos cruzados.")
+                        st.success("Base sincronizada da rede com sucesso.")
+                        notify_completion("Base sincronizada da rede.")
                         time.sleep(2)
                         st.rerun()
                     else:
-                        st.error("Erro interno ao gerar o cache consolidado. Verifique os logs.")
+                        st.error("Falha ao gerar o cache local a partir da rede. Verifique logs do sistema.")
 
-            # === FEATURE: Relatório de Pendências ===
-            st.markdown("---")
-            st.subheader("Pendências de Dados")
-            report = get_pendencias()
-            
-            if report is None:
-                st.info("Nenhuma sincronização realizada ainda.")
-            else:
-                total = report.get("total_ucs_sem_vencimento", 0)
-                if total == 0:
-                    st.success("Todos os dados estão completos.")
+        # === FEATURE: Sincronização Manual / Nuvem ===
+        st.markdown("---")
+        st.markdown("**Sincronização via Upload**")
+        balanco_up = st.file_uploader("Balanço Energético (.xlsm)", type=["xlsm", "xlsx"])
+        gestao_up = st.file_uploader("Gestão Cobrança (.xlsx)", type=["xlsx"])
+
+        can_sync = balanco_up is not None and gestao_up is not None
+
+        if not can_sync:
+            st.caption("Carregue ambas as planilhas para backup e atualização manual.")
+
+        if st.button("Sincronizar e Processar", width='stretch', disabled=not can_sync, icon="⚙️"):
+            with st.spinner("Processando e cruzando dados. Isso pode levar alguns minutos..."):
+                if state.firebase_warning:
+                    st.warning(state.firebase_warning)
+
+                success = vm.process_uploads(balanco_up.getvalue(), gestao_up.getvalue(), state)
+
+                if success:
+                    st.success("Bases processadas com sucesso.")
+                    notify_completion("Bases processadas e arquivos cruzados.")
+                    time.sleep(2)
+                    st.rerun()
                 else:
-                    st.warning(f"Detectadas {total} faturas sem Vencimento.")
-                    
-                    df_pend = pd.DataFrame(report["pendencias"])
-                    if not df_pend.empty:
-                        # Ordenar por tipo depois por referencia
-                        df_pend = df_pend.sort_values(by=["tipo", "referencia"])
-                        st.dataframe(
-                            df_pend[["no_uc", "razao_social", "referencia", "tipo"]],
-                            hide_index=True,
-                            width='stretch'
-                        )
-                
-                # Exibir data da verificação
-                try:
-                    dt_gen = pd.to_datetime(report["gerado_em"]).strftime("%d/%m/%Y às %H:%M")
-                    st.caption(f"Última verificação: {dt_gen}")
-                except:
-                    pass
+                    st.error("Erro interno ao gerar o cache consolidado. Verifique os logs.")
+
+        # === FEATURE: Relatório de Pendências ===
+        st.markdown("---")
+        st.subheader("Pendências de Dados")
+        report = get_pendencias()
+
+        if report is None:
+            st.info("Nenhuma sincronização realizada ainda.")
+        else:
+            total = report.get("total_ucs_sem_vencimento", 0)
+            if total == 0:
+                st.success("Todos os dados estão completos.")
+            else:
+                st.warning(f"Detectadas {total} faturas sem Vencimento.")
+
+                df_pend = pd.DataFrame(report["pendencias"])
+                if not df_pend.empty:
+                    df_pend = df_pend.sort_values(by=["tipo", "referencia"])
+                    st.dataframe(
+                        df_pend[["no_uc", "razao_social", "referencia", "tipo"]],
+                        hide_index=True,
+                        width='stretch'
+                    )
+
+            try:
+                dt_gen = pd.to_datetime(report["gerado_em"]).strftime("%d/%m/%Y às %H:%M")
+                st.caption(f"Última verificação: {dt_gen}")
+            except:
+                pass
