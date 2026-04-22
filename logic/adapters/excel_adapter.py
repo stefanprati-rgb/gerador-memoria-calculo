@@ -301,7 +301,7 @@ class TemplateExcelWriter:
                 return f"{raw[:2]}.{raw[2:5]}.{raw[5:8]}/{raw[8:12]}-{raw[12:14]}"
             return str(val)
 
-    def generate_bytes(self, data_to_insert: pd.DataFrame, column_mapping: Dict[str, str], tipo_apresentacao: str = "Separadores Múltiplos", incluir_resumo: bool = True, separar_auditoria: bool = True) -> bytes:
+    def generate_bytes(self, data_to_insert: pd.DataFrame, column_mapping: Dict[str, str], tipo_apresentacao: str = "Tabela Única", incluir_resumo: bool = False, separar_auditoria: bool = False) -> bytes:
         """
         Lê o template, insere as linhas filtradas e retorna os bytes do Excel gerado.
         Aplica formatação:
@@ -378,17 +378,8 @@ class TemplateExcelWriter:
         # Formato monetário brasileiro
         currency_format = '#,##0.00'
 
-        # Estilos para dados ausentes
-        missing_fill = openpyxl.styles.PatternFill(
-            start_color="FFE0B2", end_color="FFE0B2", fill_type="solid"
-        )
         missing_font = openpyxl.styles.Font(
             color="BF360C", bold=True
-        )
-
-        # Estilo para Sanity Check (Alerta Financeiro - Laranja Claro)
-        sanity_fill = openpyxl.styles.PatternFill(
-            start_color="FFCC80", end_color="FFCC80", fill_type="solid"
         )
 
         total_rows_written = 0
@@ -402,91 +393,81 @@ class TemplateExcelWriter:
                 is_parent = bool(row.get(PARENT_ROW_FLAG, False))
                 is_separator = bool(row.get(SEPARATOR_ROW_FLAG, False))
 
-            for base_col, col_idx in template_col_to_idx.items():
-                val = None
-                
-                if not is_separator and base_col in row:
-                    val = row[base_col]
+                for base_col, col_idx in template_col_to_idx.items():
+                    val = None
 
-                    # Tratar NaNs
-                    if pd.notna(val):
-                        # Tarifa Raizen não pode ser negativa (requisição do usuário)
-                        if base_col == "Tarifa Raizen" and isinstance(val, (int, float)) and val < 0:
-                            val = 0.0
+                    if not is_separator and base_col in row:
+                        val = row[base_col]
 
-                        # Aplicar formatação por tipo de coluna
-                        if base_col in self.DATE_COLUMNS:
-                            val = self._format_date(val)
-                        elif base_col in self.FULL_DATE_COLUMNS:
-                            val = self._format_date_full(val)
-                        elif base_col in self.DOCUMENT_COLUMNS:
-                            val = self._format_document(val)
+                        # Tratar NaNs
+                        if pd.notna(val):
+                            # Tarifa Raizen não pode ser negativa (requisição do usuário)
+                            if base_col == "Tarifa Raizen" and isinstance(val, (int, float)) and val < 0:
+                                val = 0.0
+
+                            # Aplicar formatação por tipo de coluna
+                            if base_col in self.DATE_COLUMNS:
+                                val = self._format_date(val)
+                            elif base_col in self.FULL_DATE_COLUMNS:
+                                val = self._format_date_full(val)
+                            elif base_col in self.DOCUMENT_COLUMNS:
+                                val = self._format_document(val)
+                        else:
+                            val = None
+
+                    new_cell = ws.cell(row=current_row, column=col_idx, value=val)
+
+                    # Formato numérico para moeda
+                    if base_col in self.CURRENCY_COLUMNS:
+                        new_cell.number_format = currency_format
+                    elif base_col in self.TEXT_COLUMNS:
+                        new_cell.number_format = '@'
+                        # Forçar valor como string se já foi lido como número
+                        if val is not None:
+                            new_cell.value = str(val).strip()
+
+                    if is_parent:
+                        # Formatação especial para Fatura Pai
+                        new_cell.font = parent_font
+                        new_cell.fill = parent_fill
                     else:
-                        val = None
+                        # Para colunas adicionadas logicamente, usar a primeira coluna como modelo visual seguro.
+                        col_ref = ws.cell(row=2, column=col_idx)
+                        model_ref = ws.cell(row=2, column=1)
+                        use_model = (base_col == CLASSIFICATION_COL) or (not col_ref.border or not col_ref.border.left.style)
+                        style_source = model_ref if use_model else col_ref
 
-                new_cell = ws.cell(row=current_row, column=col_idx, value=val)
+                        new_cell.font = copy(style_source.font)
+                        new_cell.border = copy(style_source.border)
+                        new_cell.alignment = copy(style_source.alignment)
+                        new_cell.protection = copy(style_source.protection)
 
-                # Formato numérico para moeda
-                if base_col in self.CURRENCY_COLUMNS:
-                    new_cell.number_format = currency_format
-                elif base_col in self.TEXT_COLUMNS:
-                    new_cell.number_format = '@'
-                    # Forçar valor como string se já foi lido como número
-                    if val is not None:
-                        new_cell.value = str(val).strip()
+                        if base_col not in self.CURRENCY_COLUMNS:
+                            new_cell.number_format = copy(col_ref.number_format)
 
-                if is_parent:
-                    # Formatação especial para Fatura Pai
-                    new_cell.font = parent_font
-                    new_cell.fill = parent_fill
-                elif not is_parent:
-                    # Lógica de Herança de Estilo:
-                    # Para colunas que não existem no template físico (ex: Classificação/Enriquecimento),
-                    # usamos a Coluna 1 do template como modelo de estilo "seguro" (fontes, bordas, alinhamento).
-                    col_ref = ws.cell(row=2, column=col_idx)
-                    model_ref = ws.cell(row=2, column=1) # Coluna de Referência (modelo visual)
-                    
-                    # Se a coluna original no template for "pobre" de estilo, usamos o modelo da primeira coluna
-                    use_model = (base_col == CLASSIFICATION_COL) or (not col_ref.border or not col_ref.border.left.style)
-                    style_source = model_ref if use_model else col_ref
+                    if is_separator:
+                        new_cell.fill = openpyxl.styles.PatternFill(fill_type=None)
+                    elif not is_parent:
+                        new_cell.fill = openpyxl.styles.PatternFill(fill_type=None)
 
-                    new_cell.font = copy(style_source.font)
-                    new_cell.border = copy(style_source.border)
-                    new_cell.alignment = copy(style_source.alignment)
-                    new_cell.protection = copy(style_source.protection)
-                    
-                    # Preservar o number_format original da coluna (para datas, etc), exceto se for moeda (já tratado)
-                    if base_col not in self.CURRENCY_COLUMNS:
-                        new_cell.number_format = copy(col_ref.number_format)
+                    # Destaque de ausência (apenas na fonte, fundo permanece limpo)
+                    if not is_separator:
+                        is_empty = val is None or str(val).strip().lower() in ["", "nan", "nat", "none"]
+                        if is_empty and base_col in {"Vencimento", "Status Pos-Faturamento"}:
+                            new_cell.font = missing_font
 
-                # Garantir fundo limpo para todas as linhas que não são Fatura Pai
-                # Separadores SEMPRE devem ter fundo limpo (sem herdar cores de warning ou pai)
-                if is_separator:
-                     new_cell.fill = openpyxl.styles.PatternFill(fill_type=None) or openpyxl.styles.PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
-                elif not is_parent:
-                    new_cell.fill = openpyxl.styles.PatternFill(fill_type=None)
-
-
-                # Destaque de ausência (apenas na fonte, fundo permanece limpo)
-                # Não aplica o realce (bypass) para linhas separadoras
-                if not is_separator:
-                    is_empty = val is None or str(val).strip().lower() in ["", "nan", "nat", "none"]
-                    if is_empty and base_col in {"Vencimento", "Status Pos-Faturamento"}:
-                        new_cell.font = missing_font
-                        
-                        # Adicionar comentário na coluna No. UC ou Instalação (se disponível)
-                        uc_logical_col = ENRICHMENT_KEY if ENRICHMENT_KEY in template_col_to_idx else "CPF/CNPJ"
-                        if uc_logical_col in template_col_to_idx:
-                            uc_idx = template_col_to_idx[uc_logical_col]
-                            uc_cell = ws.cell(row=current_row, column=uc_idx)
-                            if uc_cell.comment is None:
-                                from openpyxl.comments import Comment
-                                uc_cell.comment = Comment(
-                                    "⚠ Dado ausente na Gestão de Cobrança para este período",
-                                    "Sistema MC"
-                                )
-                                uc_cell.comment.width = 200
-                                uc_cell.comment.height = 50
+                            uc_logical_col = ENRICHMENT_KEY if ENRICHMENT_KEY in template_col_to_idx else "CPF/CNPJ"
+                            if uc_logical_col in template_col_to_idx:
+                                uc_idx = template_col_to_idx[uc_logical_col]
+                                uc_cell = ws.cell(row=current_row, column=uc_idx)
+                                if uc_cell.comment is None:
+                                    from openpyxl.comments import Comment
+                                    uc_cell.comment = Comment(
+                                        "⚠ Dado ausente na Gestão de Cobrança para este período",
+                                        "Sistema MC"
+                                    )
+                                    uc_cell.comment.width = 200
+                                    uc_cell.comment.height = 50
 
                 current_row += 1
                 total_rows_written += 1
@@ -496,7 +477,7 @@ class TemplateExcelWriter:
 
         # Resumo Executivo
         if incluir_resumo:
-            resumo_ws = wb.create_sheet("Resumo Executivo", 0)
+            resumo_ws = wb.create_sheet("Resumo Executivo")
             resumo_ws.append(["Resumo Executivo"])
             resumo_ws.append([])
 
@@ -531,9 +512,6 @@ class TemplateExcelWriter:
                 resumo_ws.cell(row=row_idx, column=1).font = openpyxl.styles.Font(bold=True)
             resumo_ws.cell(row=4, column=2).number_format = currency_format
             resumo_ws.cell(row=5, column=2).number_format = currency_format
-
-            # Colocar o Resumo Executivo como aba ativa
-            wb.active = 0
 
         logger.info("Planilha gerada com %d linhas de dados em %d separadores.", total_rows_written, len(df_groups))
 
