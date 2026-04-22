@@ -5,13 +5,13 @@ Extraído de app.py para manter separação de responsabilidades.
 import time
 import streamlit as st
 
-from config.settings import settings
+from config.settings import settings, ConfigurationError
 from logic.services.sync_service import (
     build_consolidated_cache_from_uploads, 
     build_consolidated_cache_from_local_network,
     get_pendencias
 )
-from logic.adapters.firebase_adapter import FirebaseAdapter
+from logic.adapters.firebase_adapter import FirebaseAdapter, FirebaseAdapterError
 import os
 import pandas as pd
 
@@ -23,12 +23,23 @@ def render_admin_panel():
     with st.sidebar.expander("Atualizar Bases (Admin)", expanded=False):
         admin_senha = st.text_input("Senha Admin", type="password")
         if admin_senha == settings.admin_password:
+            # Validação de Ambiente Crítica
+            try:
+                # Usa 'development' por padrão para não bloquear totalmente se o Firebase não estiver configurado
+                # mas o admin_password vai ser checado localmente
+                status = settings.validate_for_runtime(mode="development")
+                if not status.get("admin_secure"):
+                    st.warning("⚠️ Segurança: A senha de administrador está usando o valor padrão inseguro ('mudar_aqui'). Configure a variável ADMIN_PASSWORD.")
+            except ConfigurationError as e:
+                st.error(f"🔒 Bloqueio de Segurança Operacional:\n{e}")
+                return
+
             # === FEATURE: Sincronização Local Rápida ===
             path_rede = settings.network_balanco_path
-            if os.path.exists(path_rede):
+            if status.get("network_ready") and path_rede:
                 st.markdown("---")
                 st.markdown("**Sincronização Automática**")
-                st.info(f"O Balanço Energético foi encontrado no seu computador padrão.")
+                st.info(f"O Balanço Energético foi encontrado no caminho configurado.")
                 
                 if st.button("Atualizar Bases Diretamente", width='stretch', type="primary", icon="⬇️"):
                     with st.spinner("Puxando arquivo ultrarrápido da rede local..."):
@@ -39,7 +50,7 @@ def render_admin_panel():
                             time.sleep(2)
                             st.rerun()
                         else:
-                            st.error("Erro interno ao gerar o cache local. Verifique logs.")
+                            st.error("Falha ao gerar o cache local a partir da rede. Verifique logs do sistema.")
 
             # === FEATURE: Sincronização Manual / Nuvem ===
             st.markdown("---")
@@ -58,10 +69,12 @@ def render_admin_panel():
                     fb = None
                     try:
                         fb = FirebaseAdapter(settings.firebase_credentials_path, settings.firebase_storage_bucket)
-                        if fb._app is None:
-                            fb = None
-                    except Exception:
+                    except FirebaseAdapterError as e:
                         fb = None
+                        st.warning(f"Backup na nuvem indisponível: {e}")
+                    except Exception as e:
+                        fb = None
+                        st.error(f"Erro inesperado no adaptador Firebase: {e}")
                     
                     # Processar localmente (Local First) + backup opcional no Firebase
                     gestao_bytes = gestao_up.getvalue()
