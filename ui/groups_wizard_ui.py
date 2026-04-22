@@ -337,6 +337,10 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
 def _render_step_3_review(group: GroupState, orch: Any) -> None:
     """Resumo e botão Final de Geração. Esconde engrenagens em 'Avançado'."""
     current_sort_by = getattr(group, "sort_by", "Economia Gerada (Desc)")
+    tipo_apresentacao_label = {
+        "Separadores Múltiplos": "Uma aba por agrupamento",
+        "Tabela Única": "Tudo em uma aba",
+    }.get(group.tipo_apresentacao, group.tipo_apresentacao)
 
     st.markdown(
         """
@@ -395,7 +399,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 <span class="wiz-chip">{output_mode_label}</span>
                 <span class="wiz-chip">{grouping_mode_label}</span>
                 <span class="wiz-chip">{'Com UCs filhas' if group.include_child_rows else 'Sem UCs filhas'}</span>
-                <span class="wiz-chip">{group.tipo_apresentacao}</span>
+                <span class="wiz-chip">{tipo_apresentacao_label}</span>
                 <span class="wiz-chip">{'Com resumo executivo' if group.incluir_resumo else 'Sem resumo executivo'}</span>
             </div>
             """,
@@ -472,10 +476,15 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 set_grouping_mode(group.id, new_grouping_mode)
 
             new_tipo = st.radio(
-                "Estrutura do arquivo",
+                "Como organizar as abas do Excel",
                 options=["Separadores Múltiplos", "Tabela Única"],
+                format_func=lambda x: {
+                    "Separadores Múltiplos": "Uma aba por agrupamento (mais organizado para navegação)",
+                    "Tabela Única": "Tudo em uma aba (mais simples para filtro e exportação)",
+                }[x],
                 index=0 if group.tipo_apresentacao == "Separadores Múltiplos" else 1,
-                key=f"wiz_tipo_apres_{group.id}"
+                key=f"wiz_tipo_apres_{group.id}",
+                help="Escolha entre separar o conteúdo em abas ou consolidar tudo em uma única planilha."
             )
             if new_tipo != group.tipo_apresentacao:
                 set_tipo_apresentacao(group.id, new_tipo)
@@ -520,9 +529,10 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 set_somente_pendencias(group.id, new_pendencias)
 
             new_auditoria = st.checkbox(
-                "Separar registros de auditoria em bloco próprio",
+                "Criar abas separadas para itens de auditoria",
                 value=group.separar_auditoria,
-                key=f"wiz_auditoria_{group.id}"
+                key=f"wiz_auditoria_{group.id}",
+                help="Quando ativo, itens de auditoria ficam em abas 'Aud - ...' separadas das abas financeiras."
             )
             if new_auditoria != group.separar_auditoria:
                 set_separar_auditoria(group.id, new_auditoria)
