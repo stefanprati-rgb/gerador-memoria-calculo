@@ -179,9 +179,6 @@ class BaseExcelReader:
 
     def filter_data(self, clients: List[str], periods: List[str]) -> pd.DataFrame:
         """Filtra o DataFrame pelos clientes e períodos especificados."""
-        if not clients or not periods:
-            return pd.DataFrame(columns=self.df.columns)
-            
         mask = pd.Series(True, index=self.df.index)
 
         if clients:

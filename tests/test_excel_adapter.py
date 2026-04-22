@@ -77,6 +77,7 @@ class TestBaseExcelReader:
         periods = reader.get_periods()
 
         assert len(periods) == 2  # jan e fev
+        assert periods == ["01/2026", "02/2026"]
 
     def test_filter_data_clientes(self, sample_base_xlsx):
         """Deve filtrar corretamente por cliente."""
@@ -93,6 +94,32 @@ class TestBaseExcelReader:
         filtered = reader.filter_data([], [first_period])
 
         assert len(filtered) > 0
+
+    def test_filter_data_periodos_aceita_formato_iso_e_mm_yyyy(self, sample_base_xlsx):
+        """Deve filtrar corretamente mesmo com períodos em formato ISO/Timestamp."""
+        reader = BaseExcelReader(sample_base_xlsx)
+
+        filtered_mm = reader.filter_data([], ["01/2026"])
+        filtered_iso = reader.filter_data([], ["2026-01-01 00:00:00"])
+
+        assert len(filtered_mm) == 5
+        assert len(filtered_iso) == 5
+
+    def test_filter_data_cliente_expande_por_mesmo_cnpj(self):
+        """Selecionar um nome deve incluir variações de Razão Social com mesmo CPF/CNPJ."""
+        reader = BaseExcelReader.__new__(BaseExcelReader)
+        reader.sheet_name = "Balanco Operacional"
+        reader.df = pd.DataFrame(
+            {
+                "Razao Social": ["CORPOREOS SERVICOS", "CORPOREAOS SERVICOS", "OUTRO CLIENTE"],
+                "CPF/CNPJ": ["88.456.760/0001-98", "88456760000198", "11.111.111/0001-11"],
+                "Referencia": ["11/2025", "11/2025", "11/2025"],
+                "No. UC": ["UC1", "UC2", "UC3"],
+            }
+        )
+
+        filtered = reader.filter_data(["CORPOREOS SERVICOS"], ["11/2025"])
+        assert set(filtered["No. UC"].tolist()) == {"UC1", "UC2"}
 
 
 class TestTemplateExcelWriter:

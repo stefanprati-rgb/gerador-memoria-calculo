@@ -233,7 +233,9 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                     df_gestao[col] = pd.to_numeric(df_gestao[col], errors="coerce")
 
             # 5. Realizar o Merge (Cruzamento)
-            merge_keys = ["No. UC_norm"]
+            merge_left_uc_key = "No. UC_norm"
+            merge_right_uc_key = "No. UC_norm"
+            merge_keys = [merge_left_uc_key]
             if ref_merge_col in df_gestao.columns and ref_merge_col in df_consolidado.columns:
                 merge_keys.append(ref_merge_col)
             
@@ -260,7 +262,17 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             if "_venc_sort" in df_gestao.columns:
                 df_gestao = df_gestao.drop(columns=["_venc_sort"])
             
-            logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros únicos na Gestão)...", merge_keys, len(df_gestao))
+            # A base de Gestão sempre usa No. UC; no consolidado permitimos fallback por UC p Rateio.
+            # Para isso, criamos uma chave de merge explícita no lado esquerdo.
+            left_merge_uc_col = "_merge_uc_norm"
+            df_consolidado[left_merge_uc_col] = df_consolidado["No. UC_norm"]
+            merge_keys = [left_merge_uc_col]
+            if ref_merge_col in df_gestao.columns and ref_merge_col in df_consolidado.columns:
+                merge_keys.append(ref_merge_col)
+
+            df_gestao_for_merge = df_gestao.rename(columns={merge_right_uc_key: left_merge_uc_col}).copy()
+
+            logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros únicos na Gestão)...", merge_keys, len(df_gestao_for_merge))
             _original_len = len(df_consolidado)  # capture antes do merge
             
             # Segurança: Se a coluna de conta já existir na base de Balanço (vazia), dropar antes do merge para evitar _x/_y
@@ -268,7 +280,44 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             if ACCOUNT_NUMBER_COL in df_consolidado.columns:
                 df_consolidado.drop(columns=[ACCOUNT_NUMBER_COL], inplace=True)
                 
-            df_consolidado = pd.merge(df_consolidado, df_gestao, on=merge_keys, how="left")
+            df_consolidado = pd.merge(df_consolidado, df_gestao_for_merge, on=merge_keys, how="left")
+
+            # Fallback: se não encontrou por No. UC, tenta casar por UC p Rateio.
+            if "UC p Rateio" in df_consolidado.columns:
+                df_consolidado["_merge_uc_rateio_norm"] = df_consolidado["UC p Rateio"].apply(normalize_uc)
+                if "Valor_gestao" in df_consolidado.columns:
+                    missing_after_primary = df_consolidado["Valor_gestao"].isna() | (pd.to_numeric(df_consolidado["Valor_gestao"], errors="coerce").fillna(0) <= 0)
+                else:
+                    missing_after_primary = df_consolidado["Vencimento"].isna() if "Vencimento" in df_consolidado.columns else pd.Series(False, index=df_consolidado.index)
+                missing_after_primary = missing_after_primary & df_consolidado["_merge_uc_rateio_norm"].notna()
+
+                if missing_after_primary.any():
+                    alt_left = df_consolidado.loc[missing_after_primary, [c for c in df_consolidado.columns if c not in df_gestao_for_merge.columns or c in merge_keys]].copy()
+                    alt_left["_row_id"] = alt_left.index
+                    alt_left[left_merge_uc_col] = alt_left["_merge_uc_rateio_norm"]
+
+                    alt_merged = pd.merge(alt_left, df_gestao_for_merge, on=merge_keys, how="left")
+                    if not alt_merged.empty:
+                        alt_merged = alt_merged.set_index("_row_id")
+                        fill_cols = [
+                            "Vencimento",
+                            "Status Pos-Faturamento_gestao",
+                            "Valor_gestao",
+                            "Base_gestao",
+                            ACCOUNT_NUMBER_COL,
+                            "Data de Pagamento",
+                            "_is_duplicate_gestao",
+                        ]
+                        for col in fill_cols:
+                            if col in df_consolidado.columns and col in alt_merged.columns:
+                                current = df_consolidado.loc[missing_after_primary, col]
+                                incoming = alt_merged[col]
+                                if col == "Valor_gestao":
+                                    current_num = pd.to_numeric(current, errors="coerce")
+                                    replace_mask = current_num.isna() | (current_num <= 0)
+                                else:
+                                    replace_mask = current.isna()
+                                df_consolidado.loc[missing_after_primary, col] = current.where(~replace_mask, incoming)
 
             # Normalizar nomes de colunas com trailing/leading spaces após o merge
             df_consolidado.columns = df_consolidado.columns.str.strip()
@@ -347,7 +396,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                         json.dump(report, f, indent=2, ensure_ascii=False)
                 except: pass
 
-            drop_aux = ["No. UC_norm", "Referencia_merge"]
+            drop_aux = ["No. UC_norm", "Referencia_merge", left_merge_uc_col, "_merge_uc_rateio_norm"]
             df_consolidado.drop(columns=[c for c in drop_aux if c in df_consolidado.columns], inplace=True)
         except ValueError as e:
             # Re-raise erros de validação propositais

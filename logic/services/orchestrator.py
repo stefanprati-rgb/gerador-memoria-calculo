@@ -56,6 +56,27 @@ def _parse_br_number(value: Any, default: float | None = None) -> float | None:
         return default
 
 
+def _normalize_uc_text(value: Any) -> Optional[str]:
+    if pd.isna(value):
+        return pd.NA
+
+    s = str(value).strip()
+    if s.lower() in {"", "nan", "none"}:
+        return pd.NA
+
+    # Remove sufixo decimal comum vindo de planilhas numéricas (ex.: 12345.0)
+    if s.endswith(".0"):
+        s = s[:-2]
+
+    return s
+
+
+def _contains_letter(value: Any) -> bool:
+    if pd.isna(value):
+        return False
+    return any(ch.isalpha() for ch in str(value))
+
+
 class Orchestrator:
     """Serviço central para orquestrar a geração de planilhas com suporte a agrupamento."""
 
@@ -228,6 +249,96 @@ class Orchestrator:
             return pd.Series(False, index=df.index)
         return df["Vencimento"].isna() | (df["Vencimento"].astype(str).str.strip().str.lower().isin(["", "nan", "nat", "none"]))
 
+    def _restrict_to_portal_invoices(self, df: pd.DataFrame, alias_lookup_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+        """
+        Mantém somente cobranças que existem na Gestão (portal), com no máximo
+        uma linha por UC+Referência e valor positivo. Quando disponível, usa Valor_gestao como
+        valor de faturamento final.
+        """
+        if df.empty or "Valor_gestao" not in df.columns:
+            return df
+
+        # Captura aliases de instalação antes dos filtros de valor da Gestão.
+        raw = alias_lookup_df.copy() if alias_lookup_df is not None else df.copy()
+        raw["_uc_base_raw"] = raw[ENRICHMENT_KEY].apply(_normalize_uc_text)
+        if HIERARCHY_KEY_COL in raw.columns:
+            raw["_uc_portal_raw"] = raw[HIERARCHY_KEY_COL].apply(_normalize_uc_text)
+        else:
+            raw["_uc_portal_raw"] = pd.NA
+        alias_source = raw[raw["_uc_portal_raw"].notna() & raw[ENRICHMENT_KEY].apply(_contains_letter)]
+        alias_map = (
+            alias_source
+            .dropna(subset=["_uc_portal_raw", ENRICHMENT_KEY])
+            .drop_duplicates(subset=["_uc_portal_raw"], keep="first")
+            .set_index("_uc_portal_raw")[ENRICHMENT_KEY]
+            .to_dict()
+        )
+
+        work = df[df["Valor_gestao"].notna()].copy()
+        work["Valor_gestao"] = pd.to_numeric(work["Valor_gestao"], errors="coerce")
+        work = work[work["Valor_gestao"] > 0].copy()
+        if work.empty:
+            return work
+
+        for col in [ENRICHMENT_KEY, "Referencia"]:
+            if col not in work.columns:
+                return work
+
+        # A UC exibida no portal pode vir de "UC p Rateio" para alguns clientes.
+        work["_uc_base"] = work[ENRICHMENT_KEY].apply(_normalize_uc_text)
+        if HIERARCHY_KEY_COL in work.columns:
+            work["_uc_portal"] = work[HIERARCHY_KEY_COL].apply(_normalize_uc_text)
+        else:
+            work["_uc_portal"] = pd.NA
+
+        # Alguns clientes usam alias alfanumérico no portal (ex.: "W700..."/"E702...")
+        # enquanto a base técnica usa o identificador numérico de rateio.
+        work["_uc_alias"] = work["_uc_base"].map(alias_map)
+
+        work["_uc_final"] = work["_uc_portal"].combine_first(work["_uc_alias"]).combine_first(work["_uc_base"])
+
+        work = work.dropna(subset=["_uc_final", "Referencia"])
+        if work.empty:
+            return work
+
+        key_cols = ["_uc_final", "Referencia"]
+
+        # Prioriza linhas com origem "Fatura" e com número de conta preenchido.
+        source_col = work.get(CLASSIFICATION_SOURCE_COL, pd.Series("", index=work.index)).astype(str).str.strip().str.lower()
+        work["_portal_pref_fatura"] = source_col == "fatura"
+        if ACCOUNT_NUMBER_COL in work.columns:
+            work["_portal_pref_conta"] = work[ACCOUNT_NUMBER_COL].notna() & (work[ACCOUNT_NUMBER_COL].astype(str).str.strip() != "")
+        else:
+            work["_portal_pref_conta"] = False
+        work["_portal_pref_valor"] = work.get("Valor Enviado Emissão", pd.Series(0.0, index=work.index)).apply(_parse_br_number, default=0.0).fillna(0.0)
+
+        work = work.sort_values(
+            by=["_portal_pref_fatura", "_portal_pref_conta", "_portal_pref_valor"],
+            ascending=[False, False, False],
+        )
+        work = work.drop_duplicates(subset=key_cols, keep="first")
+
+        # A UC de saída deve refletir a mesma identificação usada no portal.
+        work[ENRICHMENT_KEY] = work["_uc_final"]
+
+        # Valor da cobrança no portal tem precedência sobre o valor técnico do balanço.
+        work["Valor Enviado Emissão"] = pd.to_numeric(work["Valor_gestao"], errors="coerce").fillna(0.0)
+
+        work = work.drop(
+            columns=[
+                "_portal_pref_fatura",
+                "_portal_pref_conta",
+                "_portal_pref_valor",
+                "_uc_base",
+                "_uc_portal",
+                "_uc_alias",
+                "_uc_final",
+            ],
+            errors="ignore",
+        )
+        logger.info("Filtro portal-first aplicado: %d registros mantidos.", len(work))
+        return work
+
     def _apply_classification(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         if CLASSIFICATION_SOURCE_COL not in df.columns:
@@ -262,6 +373,8 @@ class Orchestrator:
 
         logger.info("Gerando planilha. Modo: %s | Filhas: %s | Ordenação: %s", grouping_mode, include_child_rows, sort_by)
         filtered_df = self.reader.filter_data(selected_clients, selected_periods)
+        alias_scope_df = self.reader.filter_data(selected_clients, [])
+        filtered_df = self._restrict_to_portal_invoices(filtered_df, alias_lookup_df=alias_scope_df)
 
         actual_enrichment_cols = []
         if enrichment_df is not None and not enrichment_df.empty:

@@ -363,3 +363,47 @@ class TestPortalOnlyGeneration:
         assert result == b"xlsx-bytes"
         generated_df = captured["df"]
         assert set(generated_df["No. UC"].dropna().astype(str)) == {"PORTAL-001", "PORTAL-002"}
+
+    def test_generate_usa_alias_alfanumerico_quando_uc_base_for_rateio(self, sample_base_xlsx, sample_template_xlsx, monkeypatch):
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+
+        source_df = pd.DataFrame({
+            "Referencia": ["11/2025", "11/2025", "02/2026"],
+            "No. UC": ["631753726", "642599431", "W7008678589"],
+            "UC p Rateio": [pd.NA, pd.NA, "631753726"],
+            "Razao Social": ["Cliente Z", "Cliente Z", "Cliente Z"],
+            "Distribuidora": ["CPFL", "CPFL", "CPFL"],
+            "Fonte dos Dados": ["Fatura", "Fatura", "Contrato"],
+            "Número da conta": ["A1", "A2", pd.NA],
+            "Valor Enviado Emissão": [1.0, 1.0, 0.0],
+            "Valor_gestao": [2687.26, 2162.90, 0.0],
+            "Tarifa Raizen": [1.0, 1.0, 1.0],
+            "Custo c/ GD": [1.0, 1.0, 1.0],
+            "Custo s/ GD": [2.0, 2.0, 2.0],
+            "Ganho total Padrão": [1.0, 1.0, 1.0],
+            "CPF/CNPJ": ["1", "1", "1"],
+            "Cred. Consumido Raizen": [1.0, 1.0, 1.0],
+            "Desconto Contratado": ["10%", "10%", "10%"],
+            "Vencimento": ["01-12-2025", "01-12-2025", pd.NA],
+            "Status Pos-Faturamento": ["Pago", "Pago", pd.NA],
+        })
+
+        monkeypatch.setattr(orch.reader, "filter_data", lambda *args, **kwargs: source_df.copy())
+
+        captured = {}
+
+        class _FakeWriter:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def generate_bytes(self, data_to_insert, *_args, **_kwargs):
+                captured["df"] = data_to_insert.copy()
+                return b"xlsx-bytes"
+
+        monkeypatch.setattr("logic.services.orchestrator.TemplateExcelWriter", _FakeWriter)
+
+        result = orch.generate(["Cliente Z"], ["11/2025"], grouping_mode="none")
+
+        assert result == b"xlsx-bytes"
+        generated_df = captured["df"]
+        assert "W7008678589" in set(generated_df["No. UC"].dropna().astype(str))
