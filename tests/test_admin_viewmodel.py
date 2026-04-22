@@ -23,7 +23,7 @@ def test_admin_viewmodel_fatal_error(mock_settings):
     assert state.can_sync_local is False
 
 @patch('ui.viewmodels.admin_viewmodel.settings')
-def test_admin_viewmodel_warning_and_local(mock_settings):
+def test_admin_viewmodel_local_sync_enabled(mock_settings):
     mock_settings.validate_for_runtime.return_value = {
         "admin_secure": False,
         "firebase_ready": True,
@@ -35,7 +35,7 @@ def test_admin_viewmodel_warning_and_local(mock_settings):
     state = vm.get_state()
     
     assert state.fatal_error is None
-    assert "Segurança: A senha" in state.warning_message
+    assert state.warning_message is None
     assert state.can_sync_local is True
     assert state.local_path == "caminho_mock"
 

@@ -26,10 +26,7 @@ class AdminViewModel:
         # 1. Validação do Runtime
         try:
             runtime_status = settings.validate_for_runtime(mode=self.mode)
-            
-            if not runtime_status.get("admin_secure"):
-                state.warning_message = "Segurança: A senha de administrador está usando o valor padrão inseguro ('mudar_aqui'). Configure a variável ADMIN_PASSWORD."
-                
+
             # 2. Sync Local
             if runtime_status.get("network_ready"):
                 state.can_sync_local = True
