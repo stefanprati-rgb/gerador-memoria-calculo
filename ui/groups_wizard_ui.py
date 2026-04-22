@@ -259,18 +259,66 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
 
 def _render_step_3_review(group: GroupState, orch: Any) -> None:
     """Resumo e botão Final de Geração. Esconde engrenagens em 'Avançado'."""
-    st.markdown("<h4 style='margin-bottom: 10px;'>3. Revisão & Geração</h4>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="wiz-review-hero">
+            <h4>3. Revisão e Geração</h4>
+            <p>Esta etapa existe para confirmar o escopo da emissão antes de construir o arquivo. Revise volume, pendências e modo de apresentação.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     
     from ui.viewmodels.wizard_viewmodel import WizardViewModel
     vm = WizardViewModel(orch)
     metrics = vm.get_review_metrics(group.clients, group.periods)
 
-    # Card de Resumo Minimalista
+    st.markdown(
+        f"""
+        <div class="wiz-summary-grid">
+            <div class="wiz-summary-card">
+                <div class="wiz-summary-label">Clientes</div>
+                <div class="wiz-summary-value">{len(group.clients)}</div>
+                <div class="wiz-summary-help">Escopo atual da emissão.</div>
+            </div>
+            <div class="wiz-summary-card">
+                <div class="wiz-summary-label">Períodos</div>
+                <div class="wiz-summary-value">{len(group.periods)}</div>
+                <div class="wiz-summary-help">Meses que entrarão no arquivo final.</div>
+            </div>
+            <div class="wiz-summary-card">
+                <div class="wiz-summary-label">Faturas</div>
+                <div class="wiz-summary-value">{metrics.total_invoices}</div>
+                <div class="wiz-summary-help">Volume estimado após aplicar os filtros selecionados.</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
+    metric_col_1.metric("Clientes", len(group.clients))
+    metric_col_2.metric("Meses", len(group.periods))
+    metric_col_3.metric("Faturas", metrics.total_invoices)
+
+    output_mode_label = "ZIP por período" if len(group.periods) > 1 else "Excel único"
     with st.container(border=True):
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Clientes", len(group.clients))
-        c2.metric("Meses", len(group.periods))
-        c3.metric("Faturas", metrics.total_invoices)
+        st.markdown(
+            """
+            <div class="wiz-panel-title">Decisão de saída</div>
+            <div class="wiz-panel-copy">A interface já calculou o formato final com base no escopo escolhido. O objetivo aqui é evitar surpresa na hora do download.</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"""
+            <div class="wiz-chip-row">
+                <span class="wiz-chip">{output_mode_label}</span>
+                <span class="wiz-chip">{group.tipo_apresentacao}</span>
+                <span class="wiz-chip">{'Com resumo executivo' if group.incluir_resumo else 'Sem resumo executivo'}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # --- TRATAMENTO DE INCOMPLETOS (Fim do Data Dump) ---
     incomplete_filter = "all"  # default
@@ -299,50 +347,67 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 label_visibility="collapsed",
                 key="wiz_incomplete_filter"
             )
+    else:
+        st.success("Todas as faturas do escopo atual possuem vencimento identificado.")
 
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
     from ui.state.group_state import (
         set_tipo_apresentacao, set_incluir_resumo, set_somente_pendencias, set_separar_auditoria
     )
-    st.markdown("##### Opções de Apresentação")
-    col_apres1, col_apres2 = st.columns(2)
-    with col_apres1:
-        new_tipo = st.radio(
-            "Tipo de Apresentação",
-            options=["Separadores Múltiplos", "Tabela Única"],
-            index=0 if group.tipo_apresentacao == "Separadores Múltiplos" else 1,
-            key=f"wiz_tipo_apres_{group.id}"
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div class="wiz-panel-title">Opções de apresentação</div>
+            <div class="wiz-panel-copy">Estas escolhas alteram a forma de entrega do arquivo, não o conjunto base de dados selecionado.</div>
+            """,
+            unsafe_allow_html=True,
         )
-        if new_tipo != group.tipo_apresentacao:
-            set_tipo_apresentacao(group.id, new_tipo)
+        col_apres1, col_apres2 = st.columns(2)
+        with col_apres1:
+            new_tipo = st.radio(
+                "Tipo de Apresentação",
+                options=["Separadores Múltiplos", "Tabela Única"],
+                index=0 if group.tipo_apresentacao == "Separadores Múltiplos" else 1,
+                key=f"wiz_tipo_apres_{group.id}"
+            )
+            if new_tipo != group.tipo_apresentacao:
+                set_tipo_apresentacao(group.id, new_tipo)
 
-    with col_apres2:
-        new_resumo = st.checkbox(
-            "Incluir Resumo Executivo",
-            value=group.incluir_resumo,
-            key=f"wiz_resumo_{group.id}"
-        )
-        if new_resumo != group.incluir_resumo:
-            set_incluir_resumo(group.id, new_resumo)
+        with col_apres2:
+            new_resumo = st.checkbox(
+                "Incluir Resumo Executivo",
+                value=group.incluir_resumo,
+                key=f"wiz_resumo_{group.id}"
+            )
+            if new_resumo != group.incluir_resumo:
+                set_incluir_resumo(group.id, new_resumo)
 
-        new_pendencias = st.checkbox(
-            "Gerar apenas faturas pendentes (Ocultar 'Pago')",
-            value=group.somente_pendencias,
-            key=f"wiz_pendencias_{group.id}"
-        )
-        if new_pendencias != group.somente_pendencias:
-            set_somente_pendencias(group.id, new_pendencias)
+            new_pendencias = st.checkbox(
+                "Gerar apenas faturas pendentes (Ocultar 'Pago')",
+                value=group.somente_pendencias,
+                key=f"wiz_pendencias_{group.id}"
+            )
+            if new_pendencias != group.somente_pendencias:
+                set_somente_pendencias(group.id, new_pendencias)
 
-        new_auditoria = st.checkbox(
-            "Separar linhas de Auditoria (Regras/Filhas)",
-            value=group.separar_auditoria,
-            key=f"wiz_auditoria_{group.id}"
-        )
-        if new_auditoria != group.separar_auditoria:
-            set_separar_auditoria(group.id, new_auditoria)
+            new_auditoria = st.checkbox(
+                "Separar linhas de Auditoria (Regras/Filhas)",
+                value=group.separar_auditoria,
+                key=f"wiz_auditoria_{group.id}"
+            )
+            if new_auditoria != group.separar_auditoria:
+                set_separar_auditoria(group.id, new_auditoria)
 
     # --- BOTÃO PRINCIPAL (O Caminho Feliz) ---
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div class="wiz-panel-title">Geração final</div>
+            <div class="wiz-panel-copy">Se o escopo estiver correto, siga com a construção do arquivo. O download é liberado no mesmo passo, sem navegação extra.</div>
+            """,
+            unsafe_allow_html=True,
+        )
     if st.button("Gerar Memória de Cálculo", type="primary", use_container_width=True, icon="✨"):
         # Enriquecimento Automático: busca TODOS os perfis de metadados registrados no sistema
         enrichment_df = None
