@@ -59,9 +59,6 @@ def render_admin_panel():
 
         if st.button("Sincronizar e Processar", width='stretch', disabled=not can_sync, icon="⚙️"):
             with st.spinner("Processando e cruzando dados. Isso pode levar alguns minutos..."):
-                if state.firebase_warning:
-                    st.warning(state.firebase_warning)
-
                 success = vm.process_uploads(balanco_up.getvalue(), gestao_up.getvalue(), state)
 
                 if success:
