@@ -15,11 +15,36 @@ import pandas as pd
 from ui.utils.notifications import notify_completion
 
 
+def _is_admin_authenticated() -> bool:
+    return bool(st.session_state.get("admin_authenticated", False))
+
+
+def _set_admin_authenticated(value: bool) -> None:
+    st.session_state.admin_authenticated = value
+
+
 def render_admin_panel():
     """Renderiza o painel admin na sidebar para upload e sincronização de bases."""
     with st.sidebar.expander("Atualizar Bases (Admin)", expanded=False):
-        admin_senha = st.text_input("Senha Admin", type="password")
-        if admin_senha == settings.admin_password:
+        admin_senha = st.text_input("Senha Admin", type="password", key="admin_password_input")
+
+        if not _is_admin_authenticated():
+            col_login, col_logout = st.columns([0.7, 0.3])
+            with col_login:
+                if st.button("Entrar", use_container_width=True, type="primary"):
+                    if admin_senha == settings.admin_password:
+                        _set_admin_authenticated(True)
+                        st.rerun()
+                    else:
+                        st.error("Senha inválida.")
+            return
+
+        if st.button("Sair", use_container_width=True):
+            _set_admin_authenticated(False)
+            st.session_state.pop("admin_password_input", None)
+            st.rerun()
+
+        if _is_admin_authenticated():
             from ui.viewmodels.admin_viewmodel import AdminViewModel
             
             vm = AdminViewModel(mode="development")

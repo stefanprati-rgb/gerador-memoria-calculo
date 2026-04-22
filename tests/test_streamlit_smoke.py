@@ -9,6 +9,7 @@ sys.modules["firebase_admin.storage"] = MagicMock()
 sys.modules["firebase_admin.firestore"] = MagicMock()
 
 from ui.state.group_state import GroupState
+from ui.viewmodels.admin_viewmodel import AdminState
 from ui.viewmodels.admin_viewmodel import AdminViewModel
 
 
@@ -43,6 +44,32 @@ class FakeOrchestrator:
     def generate(self, clients, periods, **kwargs):
         self.generate_calls += 1
         return b"fake-excel-bytes"
+
+
+def test_admin_login_feedback_smoke(monkeypatch):
+    import ui.admin as admin_ui
+
+    monkeypatch.setattr(admin_ui.settings, "admin_password", "secret")
+    monkeypatch.setattr(
+        AdminViewModel,
+        "get_state",
+        lambda self: AdminState(can_sync_local=False),
+    )
+
+    at = AppTest.from_function(_render_admin_test_app)
+    at.run()
+
+    at.sidebar.text_input[0].set_value("wrong").run()
+    login_button = next(button for button in at.sidebar.button if button.label == "Entrar")
+    login_button.click().run()
+
+    assert any("Senha inválida." in error.value for error in at.sidebar.error)
+
+    at.sidebar.text_input[0].set_value("secret").run()
+    login_button = next(button for button in at.sidebar.button if button.label == "Entrar")
+    login_button.click().run()
+
+    assert any("Sincronização via Upload" in markdown.value for markdown in at.sidebar.markdown)
 
 
 def test_wizard_step_3_generate_smoke(monkeypatch):
