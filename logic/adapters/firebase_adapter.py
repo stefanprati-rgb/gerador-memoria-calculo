@@ -50,29 +50,29 @@ class FirebaseAdapter:
                     source = "Dicionário Direto"
 
                 # 2. Caso seja uma string (Caminho de Arquivo)
-                elif isinstance(self.credentials_path, str):
+                elif isinstance(self.credentials_path, str) and self.credentials_path.strip():
                     abs_path = os.path.abspath(self.credentials_path)
                     if os.path.exists(abs_path):
                         cred = credentials.Certificate(abs_path)
                         source = f"Arquivo Local ({abs_path})"
-                    
-                    # 3. Fallback para st.secrets se o arquivo não existir
-                    else:
-                        try:
-                            if "firebase" in st.secrets:
-                                cred_dict = dict(st.secrets["firebase"])
-                                if "private_key" in cred_dict:
-                                    cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
-                                cred = credentials.Certificate(cred_dict)
-                                source = "Streamlit Secrets"
-                            elif "firebase_credentials" in st.secrets:
-                                cred_dict = dict(st.secrets["firebase_credentials"])
-                                if "private_key" in cred_dict:
-                                    cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
-                                cred = credentials.Certificate(cred_dict)
-                                source = "Streamlit Secrets (legacy key)"
-                        except Exception as e:
-                            pass
+                
+                # 3. Fallback para st.secrets (caso path não exista, seja nulo ou vazio)
+                if not cred:
+                    try:
+                        if "firebase" in st.secrets:
+                            cred_dict = dict(st.secrets["firebase"])
+                            if "private_key" in cred_dict:
+                                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+                            cred = credentials.Certificate(cred_dict)
+                            source = "Streamlit Secrets"
+                        elif "firebase_credentials" in st.secrets:
+                            cred_dict = dict(st.secrets["firebase_credentials"])
+                            if "private_key" in cred_dict:
+                                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+                            cred = credentials.Certificate(cred_dict)
+                            source = "Streamlit Secrets (legacy key)"
+                    except Exception:
+                        pass
 
                 if not cred:
                     raise FirebaseAdapterError("Nenhuma credencial Firebase encontrada (Dict/Arquivo/Secrets não resolvidos).")
