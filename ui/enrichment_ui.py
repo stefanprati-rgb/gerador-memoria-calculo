@@ -17,45 +17,72 @@ def render_enrichment_wizard(orchestrator):
     Interface para o Enriquecimento de Dados.
     Foco exclusivo no cadastro de metadados fixos por perfil (Firebase).
     """
-    st.title("Sistema de Enriquecimento de Dados")
-    st.markdown("#### 🗄️ Gestão de Metadados e Cadastro Fixo")
-    st.write("Mantenha aqui os dados permanentes de suas UCs. Estes dados são usados automaticamente na geração das memórias de cálculo.")
+    st.markdown(
+        """
+        <div class="wiz-step-hero">
+            <h4>Enriquecimento de Dados</h4>
+            <p>Use esta área para manter metadados permanentes das UCs. Esses dados entram automaticamente na geração das memórias de cálculo quando estiverem disponíveis.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # 1. Seletor de Perfil
     profiles = enrichment_service.list_profiles()
-    col_p1, col_p2 = st.columns([3, 1])
-
-    with col_p1:
-        active_profile = st.text_input(
-            "Nome do Perfil de Metadados (ex: Embracon)",
-            value=st.session_state.get("active_profile", ""),
-            placeholder="Digite para criar ou selecione abaixo..."
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div class="wiz-search-title">Perfil de metadados</div>
+            <div class="wiz-search-copy">Abra um perfil existente ou informe um nome novo para iniciar um cadastro limpo.</div>
+            """,
+            unsafe_allow_html=True,
         )
-        if profiles:
-            selected_existing = st.selectbox("Perfis Salvos", [""] + profiles, index=0)
-            if selected_existing:
-                st.session_state.active_profile = selected_existing
-                active_profile = selected_existing
+        col_p1, col_p2 = st.columns([3, 1])
 
-    with col_p2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Carregar Dados", use_container_width=True, type="primary", icon="📁"):
-            if active_profile:
-                st.session_state.active_profile = active_profile
-                profile_result = enrichment_service.load_mapping(active_profile)
-                if profile_result is None or isinstance(profile_result, dict):
-                    st.session_state.mapping_df = pd.DataFrame(columns=[ENRICHMENT_KEY, CLIENT_COLUMN])
+        with col_p1:
+            active_profile = st.text_input(
+                "Nome do Perfil de Metadados (ex: Embracon)",
+                value=st.session_state.get("active_profile", ""),
+                placeholder="Digite para criar ou selecione abaixo..."
+            )
+            if profiles:
+                selected_existing = st.selectbox("Perfis Salvos", [""] + profiles, index=0)
+                if selected_existing:
+                    st.session_state.active_profile = selected_existing
+                    active_profile = selected_existing
+
+        with col_p2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Carregar Dados", use_container_width=True, type="primary", icon="📁"):
+                if active_profile:
+                    st.session_state.active_profile = active_profile
+                    profile_result = enrichment_service.load_mapping(active_profile)
+                    if profile_result is None or isinstance(profile_result, dict):
+                        st.session_state.mapping_df = pd.DataFrame(columns=[ENRICHMENT_KEY, CLIENT_COLUMN])
+                    else:
+                        st.session_state.mapping_df = profile_result
+                    st.success(f"Perfil '{active_profile}' carregado e pronto para edição.")
+                    time.sleep(0.5)
+                    st.rerun()
                 else:
-                    st.session_state.mapping_df = profile_result
-                st.success(f"Perfil '{active_profile}' carregado.")
-                time.sleep(0.5)
-                st.rerun()
+                    st.warning("Informe ou selecione um perfil antes de carregar os dados.")
 
     if not st.session_state.get("active_profile"):
-        st.info("Selecione ou crie um perfil para gerenciar os metadados.")
+        st.info("Selecione ou crie um perfil para começar a gerenciar os metadados.")
         return
 
     profile_name = st.session_state.active_profile
+    current_mapping = st.session_state.get("mapping_df", pd.DataFrame(columns=[ENRICHMENT_KEY, CLIENT_COLUMN]))
+
+    st.markdown(
+        f"""
+        <div class="wiz-step-summary">
+            <span class="wiz-chip">Perfil ativo: {profile_name}</span>
+            <span class="wiz-chip">{len(current_mapping)} registro(s) em memória</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # 2. Carga Rápida (Importação em Massa)
     with st.expander("📥 Importação em Massa (Excel/CSV)", expanded=False):
@@ -79,7 +106,8 @@ def render_enrichment_wizard(orchestrator):
                     uc_col_found = next((c for c in possible_uc_cols if c in new_df.columns), None)
 
                     if not uc_col_found:
-                        st.error(f"Coluna de Identificação (No. UC) não encontrada. Colunas disponíveis: {list(new_df.columns)}")
+                        st.error("A planilha enviada não possui uma coluna de identificação de UC reconhecida.")
+                        st.caption(f"Colunas encontradas: {list(new_df.columns)}")
                     else:
                         # Rename para o padrão interno
                         if uc_col_found != ENRICHMENT_KEY:
@@ -101,19 +129,23 @@ def render_enrichment_wizard(orchestrator):
                         # Salvar no Firebase
                         if enrichment_service.save_mapping(profile_name, final_df):
                             st.session_state.mapping_df = final_df
-                            st.success(f"Planilha processada! {len(new_df)} registros registrados no perfil '{profile_name}'.")
+                            action_text = "substituídos" if replace_all else "incorporados"
+                            st.success(
+                                f"Importação concluída. {len(new_df)} registro(s) foram {action_text} no perfil '{profile_name}'."
+                            )
                             time.sleep(1)
                             st.rerun()
+                        else:
+                            st.error("A importação foi lida, mas não foi possível persistir os dados do perfil.")
                 except Exception as e:
-                    st.error(f"Erro ao processar planilha: {e}")
+                    st.error("Falha ao processar a planilha de metadados.")
+                    st.caption(str(e))
             else:
-                st.warning("Selecione um arquivo primeiro.")
+                st.warning("Selecione uma planilha antes de iniciar a importação.")
 
     # 3. Editor de Metadados
     st.markdown(f"---")
     st.markdown(f"##### Editor de Metadados: **{profile_name}**")
-
-    current_mapping = st.session_state.get("mapping_df", pd.DataFrame(columns=[ENRICHMENT_KEY, CLIENT_COLUMN]))
 
     # Forçar colunas críticas para string para evitar erro de ColumnDataKind.FLOAT
     cols_to_fix = [ENRICHMENT_KEY, CLIENT_COLUMN, ACCOUNT_NUMBER_COL]
@@ -137,6 +169,8 @@ def render_enrichment_wizard(orchestrator):
     if st.button("💾 Salvar Alterações Manuais", type="primary", use_container_width=True, icon="✅"):
         if enrichment_service.save_mapping(profile_name, edited_df):
             st.session_state.mapping_df = edited_df
-            st.success("Alterações salvas com sucesso.")
+            st.success("Alterações manuais salvas com sucesso.")
             time.sleep(0.5)
             st.rerun()
+        else:
+            st.error("Não foi possível salvar as alterações manuais deste perfil.")
