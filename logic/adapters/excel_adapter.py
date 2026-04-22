@@ -9,6 +9,7 @@ Otimizações de performance:
 """
 import pandas as pd
 from datetime import datetime
+import warnings
 from typing import List, Dict, Any, Optional
 from logic.core.mapping import (
     get_base_columns,
@@ -254,7 +255,9 @@ class TemplateExcelWriter:
             
         try:
             # Tenta converter, mas força o resultado para MM/YYYY
-            ts = pd.to_datetime(val, dayfirst=True, errors='coerce')
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=UserWarning, message='.*Parsing dates in.*')
+                ts = pd.to_datetime(val, dayfirst=True, errors='coerce')
             if pd.notna(ts):
                 return ts.strftime("%m/%Y")
             return str(val)
@@ -274,7 +277,9 @@ class TemplateExcelWriter:
         if isinstance(val, (pd.Timestamp,)):
             return val.strftime("%d-%m-%Y")
         try:
-            ts = pd.to_datetime(val, dayfirst=True)
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=UserWarning, message='.*Parsing dates in.*')
+                ts = pd.to_datetime(val, dayfirst=True)
             return ts.strftime("%d-%m-%Y")
         except Exception:
             if isinstance(val, str):

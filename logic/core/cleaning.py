@@ -2,6 +2,7 @@ import pandas as pd
 import re
 from datetime import datetime
 import logging
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,9 @@ def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
             return "Não disponível"
         try:
             # Parse flexível de data
-            ts = pd.to_datetime(val, dayfirst=True, errors='coerce')
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning, message=".*Parsing dates in.*")
+                ts = pd.to_datetime(val, dayfirst=True, errors='coerce')
             if pd.isna(ts):
                 return "Não disponível"
             return ts.strftime("%d-%m-%Y")
@@ -50,7 +53,10 @@ def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
 
     # Criamos uma coluna temporária com tipo datetime para fazer comparações lógicas
     # (respeitando o dayfirst=True para o padrão brasileiro)
-    df_clean["_venc_date_temp"] = pd.to_datetime(df_clean[col_venc], dayfirst=True, errors='coerce')
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, message=".*Parsing dates in.*")
+        df_clean["_venc_date_temp"] = pd.to_datetime(df_clean[col_venc], dayfirst=True, errors='coerce')
+    
     df_clean[col_venc] = df_clean[col_venc].apply(format_vencimento)
 
     # --- Regras 2 e 3: Situação do Pagamento e Consistência ---
