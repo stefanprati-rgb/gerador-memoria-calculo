@@ -5,6 +5,7 @@ from logic.core.dates import format_full_date, parse_full_date, format_reference
 
 logger = logging.getLogger(__name__)
 
+
 def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aplica as regras rigorosas de Vencimento e Situação do Pagamento.
@@ -97,6 +98,7 @@ def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"Status de pagamento inválidos detectados: {invalid_found}")
     
     return df_clean
+
 
 def sanitize_reference_period(df: pd.DataFrame) -> pd.DataFrame:
     """

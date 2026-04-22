@@ -7,16 +7,14 @@ import streamlit as st
 logger = logging.getLogger(__name__)
 from typing import List, Any
 from ui.state.group_state import (
-    GroupState, initialize_groups, add_group, remove_group, 
+    GroupState, initialize_groups, add_group,
     update_group_name, update_group_clients, clear_group_clients, 
     select_clients, update_group_periods, get_active_group
 )
 from ui.utils.search_utils import build_search_index, filter_values
 from ui.utils.format_utils import format_period_label, safe_key, sanitize_filename, generate_suggested_filename
 from logic.services import enrichment_service
-from logic.services.client_group_service import save_client_group, list_client_groups, get_clients_from_group
-from ui.utils.notifications import notify_completion
-import pandas as pd
+from logic.services.client_group_service import save_client_group, list_client_groups
 
 def _get_wizard_group() -> GroupState:
     """O Wizard foca em apenas 1 grupo (projeto) por vez."""
@@ -91,7 +89,6 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                     if sucesso:
                         st.success(f"'{selected_shortcut}' carregado.")
                         st.session_state[f"wiz_shortcut_{group.id}"] = "Grupos Salvos"
-                        import time
                         time.sleep(0.5)
                         st.rerun()
         except Exception as e:

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Dict
+from typing import Optional
 from config.settings import settings, ConfigurationError
 from logic.adapters.firebase_adapter import FirebaseAdapter, FirebaseAdapterError
 

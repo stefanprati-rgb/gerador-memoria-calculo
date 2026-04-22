@@ -5,14 +5,11 @@ Extraído de app.py para manter separação de responsabilidades.
 import time
 import streamlit as st
 
-from config.settings import settings, ConfigurationError
+from config.settings import settings
 from logic.services.sync_service import (
-    build_consolidated_cache_from_uploads, 
     build_consolidated_cache_from_local_network,
     get_pendencias
 )
-from logic.adapters.firebase_adapter import FirebaseAdapter, FirebaseAdapterError
-import os
 import pandas as pd
 
 from ui.utils.notifications import notify_completion

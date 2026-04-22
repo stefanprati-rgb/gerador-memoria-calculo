@@ -21,11 +21,30 @@ streamlit run app.py
 
 ## 🧪 Testes
 
-A suíte de testes cobre a lógica de sincronização, merge e resilência de dados.
+A suíte de testes cobre a lógica de sincronização, merge, geração de Excel, configuração,
+viewmodels de UI e smoke tests leves da aplicação Streamlit.
 
 ```bash
-# Rodar todos os testes
-python -m pytest tests/test_sync_service.py -v
+# Rodar toda a suíte
+python -m pytest tests -q
+
+# Rodar com warnings tratados como erro
+python -m pytest tests -q -W error::UserWarning
+```
+
+### Estratégia de Testes
+
+- `tests/test_sync_service.py`, `tests/test_orchestrator.py`, `tests/test_excel_adapter.py`
+  validam o núcleo de negócio e a geração dos arquivos.
+- `tests/test_config.py`, `tests/test_firebase_adapter.py`
+  cobrem configuração e integrações externas.
+- `tests/test_admin_viewmodel.py`, `tests/test_wizard_viewmodel.py`
+  cobrem a lógica de decisão da UI fora do Streamlit.
+- `tests/test_streamlit_smoke.py`, `tests/test_app_smoke.py`
+  cobrem smoke tests da interface e do boot da aplicação inteira.
+
+O objetivo é manter a regra de negócio protegida por testes unitários e usar smoke tests
+apenas para validar a casca da aplicação e a integração entre módulos.
 ```
 
 ## 🏗️ Arquitetura
