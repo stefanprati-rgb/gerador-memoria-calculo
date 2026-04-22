@@ -74,3 +74,35 @@ class WizardViewModel:
             filename=filename,
             mime_type=mime_type
         )
+
+    @staticmethod
+    def load_shortcut(group_id: int, shortcut_name: str) -> bool:
+        """Carrega clientes e configurações de um grupo salvo e sincroniza com o GroupState."""
+        from logic.services.client_group_service import get_clients_from_group
+        from ui.state.group_state import select_clients, set_custom_group_name, set_group_by_distributor
+        from logic.services.enrichment_service import enrichment_service
+        import pandas as pd
+        import logging
+
+        clients = get_clients_from_group(shortcut_name)
+        if not clients:
+            return False
+
+        select_clients(group_id, clients)
+        set_custom_group_name(group_id, shortcut_name)
+
+        try:
+            profile = enrichment_service.load_mapping(shortcut_name)
+            if profile is not None:
+                val = False
+                if isinstance(profile, dict):
+                    val = profile.get("group_by_distributor", False)
+                elif hasattr(profile, "get"):
+                    res = profile.get("group_by_distributor", False)
+                    if not isinstance(res, (pd.Series, pd.DataFrame)):
+                        val = res
+                set_group_by_distributor(group_id, bool(val))
+        except Exception as e:
+            logging.getLogger(__name__).error("Erro ao sincronizar regras de perfil: %s", e)
+
+        return True

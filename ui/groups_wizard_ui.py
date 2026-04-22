@@ -86,28 +86,12 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                 )
                 
                 if selected_shortcut != "Grupos Salvos":
-                    group_clients = get_clients_from_group(selected_shortcut)
-                    if group_clients:
-                        select_clients(group.id, group_clients)
-                        update_group_name(group.id, selected_shortcut) # Sincroniza o nome do grupo carregado
-                        
-                        try:
-                            profile = enrichment_service.load_mapping(selected_shortcut)
-                            if profile is not None:
-                                val = False
-                                if isinstance(profile, dict):
-                                    val = profile.get("group_by_distributor", False)
-                                elif hasattr(profile, "get"):
-                                    res = profile.get("group_by_distributor", False)
-                                    if not isinstance(res, (pd.Series, pd.DataFrame)):
-                                        val = res
-                                
-                                group.group_by_distributor = bool(val)
-                        except Exception as profile_err:
-                            logger.error("Erro ao sincronizar regras de perfil: %s", profile_err)
-                            
+                    from ui.viewmodels.wizard_viewmodel import WizardViewModel
+                    sucesso = WizardViewModel.load_shortcut(group.id, selected_shortcut)
+                    if sucesso:
                         st.success(f"'{selected_shortcut}' carregado.")
                         st.session_state[f"wiz_shortcut_{group.id}"] = "Grupos Salvos"
+                        import time
                         time.sleep(0.5)
                         st.rerun()
         except Exception as e:
@@ -321,31 +305,45 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
 
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
+    from ui.state.group_state import (
+        set_tipo_apresentacao, set_incluir_resumo, set_somente_pendencias, set_separar_auditoria
+    )
     st.markdown("##### Opções de Apresentação")
     col_apres1, col_apres2 = st.columns(2)
     with col_apres1:
-        group.tipo_apresentacao = st.radio(
+        new_tipo = st.radio(
             "Tipo de Apresentação",
             options=["Separadores Múltiplos", "Tabela Única"],
             index=0 if group.tipo_apresentacao == "Separadores Múltiplos" else 1,
             key=f"wiz_tipo_apres_{group.id}"
         )
+        if new_tipo != group.tipo_apresentacao:
+            set_tipo_apresentacao(group.id, new_tipo)
+
     with col_apres2:
-        group.incluir_resumo = st.checkbox(
+        new_resumo = st.checkbox(
             "Incluir Resumo Executivo",
             value=group.incluir_resumo,
             key=f"wiz_resumo_{group.id}"
         )
-        group.somente_pendencias = st.checkbox(
+        if new_resumo != group.incluir_resumo:
+            set_incluir_resumo(group.id, new_resumo)
+
+        new_pendencias = st.checkbox(
             "Gerar apenas faturas pendentes (Ocultar 'Pago')",
             value=group.somente_pendencias,
             key=f"wiz_pendencias_{group.id}"
         )
-        group.separar_auditoria = st.checkbox(
+        if new_pendencias != group.somente_pendencias:
+            set_somente_pendencias(group.id, new_pendencias)
+
+        new_auditoria = st.checkbox(
             "Separar linhas de Auditoria (Regras/Filhas)",
             value=group.separar_auditoria,
             key=f"wiz_auditoria_{group.id}"
         )
+        if new_auditoria != group.separar_auditoria:
+            set_separar_auditoria(group.id, new_auditoria)
 
     # --- BOTÃO PRINCIPAL (O Caminho Feliz) ---
     if st.button("Gerar Memória de Cálculo", type="primary", use_container_width=True, icon="✨"):
@@ -421,13 +419,16 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         # Enriquecimento (automático — informativo)
         st.markdown("**Enriquecimento:** Aplicado automaticamente a partir de todos os perfis cadastrados na aba de Metadados.")
         
+        from ui.state.group_state import set_group_by_distributor
         # Toggle de Distribuidora
-        group.group_by_distributor = st.toggle(
+        new_distrib = st.toggle(
             "Agrupar faturas por Distribuidora",
             value=group.group_by_distributor,
             key=f"wiz_distributor_toggle_{group.id}",
             help="Cria uma aba ou agrupamento por distribuidora de energia."
         )
+        if new_distrib != group.group_by_distributor:
+            set_group_by_distributor(group.id, new_distrib)
         
         st.checkbox("Habilitar modo de depuração (Logs detalhados)", value=False)
 

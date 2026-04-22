@@ -45,7 +45,7 @@ def test_admin_viewmodel_firebase_success(mock_adapter_class):
     mock_adapter_class.return_value = mock_adapter_instance
     
     vm = AdminViewModel()
-    fb, warn = vm.initialize_firebase()
+    fb, warn = vm._initialize_firebase()
     
     assert fb == mock_adapter_instance
     assert warn is None
@@ -55,7 +55,7 @@ def test_admin_viewmodel_firebase_warning(mock_adapter_class):
     mock_adapter_class.side_effect = FirebaseAdapterError("Bucket missing")
     
     vm = AdminViewModel()
-    fb, warn = vm.initialize_firebase()
+    fb, warn = vm._initialize_firebase()
     
     assert fb is None
     assert "Backup na nuvem indisponível: Bucket missing" in warn

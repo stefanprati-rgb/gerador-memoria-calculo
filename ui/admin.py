@@ -65,14 +65,11 @@ def render_admin_panel():
 
             if st.button("Sincronizar e Processar", width='stretch', disabled=not can_sync, icon="⚙️"):
                 with st.spinner("Processando e cruzando dados. Isso pode levar alguns minutos..."):
-                    # Tentar inicializar Firebase para backup (opcional)
-                    fb, fb_warn = vm.initialize_firebase()
-                    if fb_warn:
-                        st.warning(fb_warn)
+                    if state.firebase_warning:
+                        st.warning(state.firebase_warning)
                     
-                    # Processar localmente (Local First) + backup opcional no Firebase
-                    gestao_bytes = gestao_up.getvalue()
-                    success, _ = build_consolidated_cache_from_uploads(balanco_up.getvalue(), gestao_bytes, fb)
+                    success = vm.process_uploads(balanco_up.getvalue(), gestao_up.getvalue(), state)
+                    
                     if success:
                         st.success("Bases processadas com sucesso.")
                         notify_completion("Bases processadas e arquivos cruzados.")

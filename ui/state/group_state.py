@@ -120,3 +120,28 @@ def update_group_periods(group_id: int, periods: List[str]) -> None:
     group = get_group(group_id)
     if group:
         group.periods = list(periods)
+
+def set_group_by_distributor(group_id: int, value: bool) -> None:
+    group = get_group(group_id)
+    if group:
+        group.group_by_distributor = value
+
+def set_tipo_apresentacao(group_id: int, value: str) -> None:
+    group = get_group(group_id)
+    if group:
+        group.tipo_apresentacao = value
+
+def set_incluir_resumo(group_id: int, value: bool) -> None:
+    group = get_group(group_id)
+    if group:
+        group.incluir_resumo = value
+
+def set_somente_pendencias(group_id: int, value: bool) -> None:
+    group = get_group(group_id)
+    if group:
+        group.somente_pendencias = value
+
+def set_separar_auditoria(group_id: int, value: bool) -> None:
+    group = get_group(group_id)
+    if group:
+        group.separar_auditoria = value

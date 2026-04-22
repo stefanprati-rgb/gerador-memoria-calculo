@@ -35,13 +35,18 @@ class AdminViewModel:
                 state.can_sync_local = True
                 state.local_path = settings.network_balanco_path
                 
+            # 3. Inicializa Firebase no State
+            fb, fb_warn = self._initialize_firebase()
+            state.firebase_adapter = fb
+            state.firebase_warning = fb_warn
+                
         except ConfigurationError as e:
             state.fatal_error = f"Bloqueio de Segurança Operacional:\n{e}"
             return state
 
         return state
 
-    def initialize_firebase(self) -> tuple[Optional[FirebaseAdapter], Optional[str]]:
+    def _initialize_firebase(self) -> tuple[Optional[FirebaseAdapter], Optional[str]]:
         """
         Tenta inicializar o Firebase. Retorna a instância e/ou uma mensagem de aviso.
         """
@@ -52,3 +57,9 @@ class AdminViewModel:
             return None, f"Backup na nuvem indisponível: {e}"
         except Exception as e:
             return None, f"Erro inesperado no adaptador Firebase: {e}"
+
+    def process_uploads(self, balanco_bytes: bytes, gestao_bytes: bytes, state: AdminState) -> bool:
+        """Processa os uploads de arquivos em cache e opcionalmente no Firebase."""
+        from logic.services.orchestrator import build_consolidated_cache_from_uploads
+        success, _ = build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, state.firebase_adapter)
+        return success
