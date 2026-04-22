@@ -47,6 +47,9 @@ SUM_COLUMNS = [
 # Flag interna para marcar linhas "Fatura Pai" no DataFrame (não existe na base)
 PARENT_ROW_FLAG = "_is_parent"
 
+# Flag interna para marcar linhas filhas em agrupamentos
+CHILD_ROW_FLAG = "_is_child"
+
 # Flag interna para marcar linhas separadoras em branco (não existe na base)
 SEPARATOR_ROW_FLAG = "_is_separator"
 

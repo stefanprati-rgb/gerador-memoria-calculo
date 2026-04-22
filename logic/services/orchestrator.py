@@ -23,6 +23,7 @@ from logic.core.mapping import (
     ENRICHMENT_KEY,
     ACCOUNT_NUMBER_COL,
     SEPARATOR_ROW_FLAG,
+    CHILD_ROW_FLAG,
 )
 from logic.core.cleaning import enforce_payment_rules
 import pandas as pd
@@ -203,6 +204,8 @@ class Orchestrator:
                 parent_row[ENRICHMENT_KEY] = "Fatura Agrupada"
                 parent_row[PARENT_ROW_FLAG] = True
                 
+                parent_row[CHILD_ROW_FLAG] = False
+                
                 # Somar as colunas financeiras (min_count=1 garante que se tudo for NaN, fica NaN)
                 for col in SUM_COLUMNS:
                     if col in group_df.columns:
@@ -211,10 +214,14 @@ class Orchestrator:
                 
                 # Juntar a linha pai e as linhas filhas do grupo (Preserva a integridade: Pai + Filhas)
                 grouped_dfs.append(pd.DataFrame([parent_row]))
-                grouped_dfs.append(group_df)
+                child_df = group_df.copy()
+                child_df[CHILD_ROW_FLAG] = True
+                grouped_dfs.append(child_df)
                 parent_count += 1
             else:
-                grouped_dfs.append(group_df)
+                normal_df = group_df.copy()
+                normal_df[CHILD_ROW_FLAG] = False
+                grouped_dfs.append(normal_df)
             
             # Adicionar Linha Separadora (Fantasma) em branco após o grupo
             # Criamos uma linha com todas as colunas vazias, exceto o flag SEPARATOR_ROW_FLAG
@@ -297,7 +304,7 @@ class Orchestrator:
         )
         return df
 
-    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None, somente_pendencias: bool = False) -> Optional[bytes]:
+    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None, somente_pendencias: bool = False, tipo_apresentacao: str = "Separadores Múltiplos", incluir_resumo: bool = True, separar_auditoria: bool = True) -> Optional[bytes]:
         """
         Filtra a base, aplica agrupamento e gera o arquivo Excel com os dados mapeados.
         
@@ -397,12 +404,12 @@ class Orchestrator:
             logger.info("Filtro de pendências ativado: Removidas faturas com status 'Pago'. Linhas restantes: %d", len(processed_df))
 
         writer = TemplateExcelWriter(self.template_file)
-        excel_bytes = writer.generate_bytes(processed_df, full_mapping)
+        excel_bytes = writer.generate_bytes(processed_df, full_mapping, tipo_apresentacao=tipo_apresentacao, incluir_resumo=incluir_resumo, separar_auditoria=separar_auditoria)
 
         logger.info("Planilha gerada com sucesso (%d bytes).", len(excel_bytes))
         return excel_bytes
 
-    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None, somente_pendencias: bool = False) -> Optional[bytes]:
+    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None, somente_pendencias: bool = False, tipo_apresentacao: str = "Separadores Múltiplos", incluir_resumo: bool = True, separar_auditoria: bool = True) -> Optional[bytes]:
         """
         Recebe uma lista de dicionários com chaves 'name', 'clients' (List[str]), e 'periods' (List[str]).
         Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados com suporte a enriquecimento.
@@ -431,7 +438,10 @@ class Orchestrator:
                     incomplete_filter=incomplete_filter, 
                     group_by_distributor=group_by_distributor,
                     enrichment_df=enrichment_df,
-                    somente_pendencias=somente_pendencias
+                    somente_pendencias=somente_pendencias,
+                    tipo_apresentacao=tipo_apresentacao,
+                    incluir_resumo=incluir_resumo,
+                    separar_auditoria=separar_auditoria
                 )
                 if excel_bytes:
                     filename = group_name if group_name.endswith(".xlsx") else f"{group_name}.xlsx"

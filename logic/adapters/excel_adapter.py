@@ -23,6 +23,8 @@ from logic.core.mapping import (
     ACCOUNT_NUMBER_COL,
     SEPARATOR_ROW_FLAG,
     CLASSIFICATION_COL,
+    CHILD_ROW_FLAG,
+    CLASSIFICATION_LABEL_REGRA,
 )
 
 import logging
@@ -299,7 +301,7 @@ class TemplateExcelWriter:
                 return f"{raw[:2]}.{raw[2:5]}.{raw[5:8]}/{raw[8:12]}-{raw[12:14]}"
             return str(val)
 
-    def generate_bytes(self, data_to_insert: pd.DataFrame, column_mapping: Dict[str, str]) -> bytes:
+    def generate_bytes(self, data_to_insert: pd.DataFrame, column_mapping: Dict[str, str], tipo_apresentacao: str = "Separadores Múltiplos", incluir_resumo: bool = True, separar_auditoria: bool = True) -> bytes:
         """
         Lê o template, insere as linhas filtradas e retorna os bytes do Excel gerado.
         Aplica formatação:
@@ -316,32 +318,56 @@ class TemplateExcelWriter:
         wb = openpyxl.load_workbook(self.template_source)
         ws = wb.active
 
+        template_ws = ws
+        template_ws.title = "_template_temp"
+
         # 1. Mapear e Enforcar Layout (Strict layout)
-        # Limpamos a linha de cabeçalho e reconstruímos exatamente na ordem do mapping.
         header_row_idx = 1
-        original_max_col = ws.max_column
+        original_max_col = template_ws.max_column
         
-        # Limpeza radical da linha de cabeçalho
         for c in range(1, original_max_col + 1):
-            ws.cell(row=header_row_idx, column=c).value = None
+            template_ws.cell(row=header_row_idx, column=c).value = None
 
         template_col_to_idx = {}
         for idx, (logical_name, target_label) in enumerate(column_mapping.items(), 1):
             target_label = target_label.strip()
-            # Escrever novo header
-            ws.cell(row=header_row_idx, column=idx, value=target_label)
-            # Mapear nome lógico da fonte para este índice físico
+            template_ws.cell(row=header_row_idx, column=idx, value=target_label)
             template_col_to_idx[logical_name] = idx
             
-        # Deletar colunas fisicamente se houver excedente (garantindo layout conforme o mapping)
         expected_cols = len(column_mapping)
         if original_max_col > expected_cols:
-            ws.delete_cols(expected_cols + 1, original_max_col - expected_cols + 50)  # +50 margem de segurança
+            template_ws.delete_cols(expected_cols + 1, original_max_col - expected_cols + 50)
 
-        # Sempre começar a escrever dados na linha 2, limpando qualquer resíduo do template
-        start_row = 2
+        # Preparar dados: Separar Auditoria se ativo
+        df_financeiro = data_to_insert
+        df_auditoria = pd.DataFrame()
         
-        current_row = start_row
+        if separar_auditoria:
+            mask_aud = data_to_insert.get(CHILD_ROW_FLAG, pd.Series(False, index=data_to_insert.index)).astype(bool) | (data_to_insert.get(CLASSIFICATION_COL, "") == CLASSIFICATION_LABEL_REGRA)
+            df_auditoria = data_to_insert[mask_aud].copy()
+            df_financeiro = data_to_insert[~mask_aud].copy()
+
+        # Definir grupos de dados
+        df_groups = []
+        if tipo_apresentacao == "Tabela Única":
+            df_groups.append(("Fin - Consolidado" if separar_auditoria else "Consolidado", df_financeiro))
+            if separar_auditoria and not df_auditoria.empty:
+                df_groups.append(("Aud - Consolidado", df_auditoria))
+        else:
+            if "Distribuidora" in data_to_insert.columns:
+                for name, group in df_financeiro.groupby("Distribuidora", sort=False):
+                    prefix = "Fin - " if separar_auditoria else ""
+                    df_groups.append((f"{prefix}{name}", group))
+                
+                if separar_auditoria and not df_auditoria.empty:
+                    for name, group in df_auditoria.groupby("Distribuidora", sort=False):
+                        df_groups.append((f"Aud - {name}", group))
+            else:
+                df_groups.append(("Fin - Faturas" if separar_auditoria else "Faturas", df_financeiro))
+                if separar_auditoria and not df_auditoria.empty:
+                    df_groups.append(("Aud - Faturas", df_auditoria))
+
+        start_row = 2
 
         # Estilos para a linha "Fatura Pai" — fundo amarelo visível
         parent_font = openpyxl.styles.Font(bold=True, size=11)
@@ -365,9 +391,16 @@ class TemplateExcelWriter:
             start_color="FFCC80", end_color="FFCC80", fill_type="solid"
         )
 
-        for _, row in data_to_insert.iterrows():
-            is_parent = bool(row.get(PARENT_ROW_FLAG, False))
-            is_separator = bool(row.get(SEPARATOR_ROW_FLAG, False))
+        total_rows_written = 0
+        for name, group_df in df_groups:
+            ws = wb.copy_worksheet(template_ws)
+            safe_title = "".join([c for c in name if c not in r"\/?*[]:"])[:31]
+            ws.title = safe_title if safe_title else "Consolidado"
+            current_row = start_row
+
+            for _, row in group_df.iterrows():
+                is_parent = bool(row.get(PARENT_ROW_FLAG, False))
+                is_separator = bool(row.get(SEPARATOR_ROW_FLAG, False))
 
             for base_col, col_idx in template_col_to_idx.items():
                 val = None
@@ -455,9 +488,54 @@ class TemplateExcelWriter:
                                 uc_cell.comment.width = 200
                                 uc_cell.comment.height = 50
 
-            current_row += 1
+                current_row += 1
+                total_rows_written += 1
 
-        logger.info("Planilha gerada com %d linhas de dados.", current_row - start_row)
+        # Remover aba temporária
+        wb.remove(template_ws)
+
+        # Resumo Executivo
+        if incluir_resumo:
+            resumo_ws = wb.create_sheet("Resumo Executivo", 0)
+            resumo_ws.append(["Resumo Executivo"])
+            resumo_ws.append([])
+
+            is_parent = data_to_insert.get(PARENT_ROW_FLAG, pd.Series(False, index=data_to_insert.index)).astype(bool)
+            is_separator = data_to_insert.get(SEPARATOR_ROW_FLAG, pd.Series(False, index=data_to_insert.index)).astype(bool)
+            raw_rows = data_to_insert[~(is_parent | is_separator)]
+
+            def _parse_num(v):
+                if pd.isna(v): return 0.0
+                if isinstance(v, (int, float)): return float(v)
+                s = str(v).strip()
+                if s in ["", "-", "--"]: return 0.0
+                if "," in s: s = s.replace(".", "").replace(",", ".")
+                try: return float(s)
+                except: return 0.0
+
+            eco_total = raw_rows["Ganho total Padrão"].apply(_parse_num).sum() if "Ganho total Padrão" in raw_rows.columns else 0.0
+            fat_total = raw_rows["Tarifa Raizen"].apply(_parse_num).sum() if "Tarifa Raizen" in raw_rows.columns else 0.0
+
+            resumo_ws.append(["Soma da Economia Gerada (R$):", eco_total])
+            resumo_ws.append(["Soma da Fatura Raízen (R$):", fat_total])
+            resumo_ws.append([])
+            resumo_ws.append(["Situação do Pagamento", "Contagem"])
+            
+            if "Status Pos-Faturamento" in raw_rows.columns:
+                counts = raw_rows["Status Pos-Faturamento"].value_counts()
+                for status, count in counts.items():
+                    resumo_ws.append([status, count])
+
+            # Formatação básica do resumo
+            for row_idx in [1, 4, 5, 7]:
+                resumo_ws.cell(row=row_idx, column=1).font = openpyxl.styles.Font(bold=True)
+            resumo_ws.cell(row=4, column=2).number_format = currency_format
+            resumo_ws.cell(row=5, column=2).number_format = currency_format
+
+            # Colocar o Resumo Executivo como aba ativa
+            wb.active = 0
+
+        logger.info("Planilha gerada com %d linhas de dados em %d separadores.", total_rows_written, len(df_groups))
 
         output = io.BytesIO()
         wb.save(output)

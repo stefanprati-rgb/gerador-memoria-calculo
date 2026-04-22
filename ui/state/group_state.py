@@ -12,6 +12,9 @@ class GroupState:
     group_by_distributor: bool = False
     is_auto_name: bool = True
     somente_pendencias: bool = False
+    tipo_apresentacao: str = "Separadores Múltiplos"
+    incluir_resumo: bool = True
+    separar_auditoria: bool = True
 
 def initialize_groups() -> None:
     """Inicializa o estado dos grupos na sessão do Streamlit, se não existir."""

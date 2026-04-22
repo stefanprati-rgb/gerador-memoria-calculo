@@ -330,11 +330,31 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
 
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
-    group.somente_pendencias = st.checkbox(
-        "Gerar apenas faturas pendentes (Ocultar 'Pago')",
-        value=group.somente_pendencias,
-        key=f"wiz_pendencias_{group.id}"
-    )
+    st.markdown("##### Opções de Apresentação")
+    col_apres1, col_apres2 = st.columns(2)
+    with col_apres1:
+        group.tipo_apresentacao = st.radio(
+            "Tipo de Apresentação",
+            options=["Separadores Múltiplos", "Tabela Única"],
+            index=0 if group.tipo_apresentacao == "Separadores Múltiplos" else 1,
+            key=f"wiz_tipo_apres_{group.id}"
+        )
+    with col_apres2:
+        group.incluir_resumo = st.checkbox(
+            "Incluir Resumo Executivo",
+            value=group.incluir_resumo,
+            key=f"wiz_resumo_{group.id}"
+        )
+        group.somente_pendencias = st.checkbox(
+            "Gerar apenas faturas pendentes (Ocultar 'Pago')",
+            value=group.somente_pendencias,
+            key=f"wiz_pendencias_{group.id}"
+        )
+        group.separar_auditoria = st.checkbox(
+            "Separar linhas de Auditoria (Regras/Filhas)",
+            value=group.separar_auditoria,
+            key=f"wiz_auditoria_{group.id}"
+        )
 
     # --- BOTÃO PRINCIPAL (O Caminho Feliz) ---
     if st.button("Gerar Memória de Cálculo", type="primary", use_container_width=True, icon="✨"):
@@ -362,7 +382,10 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                             incomplete_filter=incomplete_filter,
                             group_by_distributor=group.group_by_distributor,
                             enrichment_df=enrichment_df,
-                            somente_pendencias=group.somente_pendencias
+                            somente_pendencias=group.somente_pendencias,
+                            tipo_apresentacao=group.tipo_apresentacao,
+                            incluir_resumo=group.incluir_resumo,
+                            separar_auditoria=group.separar_auditoria
                         )
                         if period_excel:
                             f_name = f"{sanitize_filename(group.name)}_{period_label}.xlsx"
@@ -378,7 +401,10 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                     incomplete_filter=incomplete_filter,
                     group_by_distributor=group.group_by_distributor,
                     enrichment_df=enrichment_df,
-                    somente_pendencias=group.somente_pendencias
+                    somente_pendencias=group.somente_pendencias,
+                    tipo_apresentacao=group.tipo_apresentacao,
+                    incluir_resumo=group.incluir_resumo,
+                    separar_auditoria=group.separar_auditoria
                 )
                 is_zip = False
             
