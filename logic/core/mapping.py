@@ -20,6 +20,12 @@ GROUPING_FLAG_VALUE = "Agrupamento"
 # Colunas usadas como chave de agrupamento (CPF/CNPJ × Distribuidora)
 GROUPING_KEYS = ["CPF/CNPJ", "Distribuidora"]
 
+# Modos explícitos de agrupamento suportados pela aplicação
+GROUPING_MODE_DEFAULT = "default"
+GROUPING_MODE_DISTRIBUTOR = "distributor"
+GROUPING_MODE_CNPJ = "cnpj"
+GROUPING_MODE_NONE = "none"
+
 # Coluna comercial usada pela Raízen para agrupar faturas de grandes clientes (ex: DELCI)
 GROUPING_IBM_COL = "No. IBM"
 

@@ -14,6 +14,10 @@ from logic.core.mapping import (
     HEADER_MARKER_COLUMNS,
     CLIENT_COLUMN,
     PERIOD_COLUMN,
+    GROUPING_MODE_DEFAULT,
+    GROUPING_MODE_DISTRIBUTOR,
+    GROUPING_MODE_CNPJ,
+    GROUPING_MODE_NONE,
 )
 
 
@@ -78,6 +82,13 @@ class TestGroupingConstants:
     def test_parent_row_flag_definida(self):
         """A flag de linha pai deve estar definida."""
         assert PARENT_ROW_FLAG == "_is_parent"
+
+    def test_grouping_modes_definidos(self):
+        """Os modos explícitos de agrupamento devem existir."""
+        assert GROUPING_MODE_DEFAULT == "default"
+        assert GROUPING_MODE_DISTRIBUTOR == "distributor"
+        assert GROUPING_MODE_CNPJ == "cnpj"
+        assert GROUPING_MODE_NONE == "none"
 
     def test_header_markers_definidos(self):
         """As colunas-marcador para detecção de header devem estar definidas."""

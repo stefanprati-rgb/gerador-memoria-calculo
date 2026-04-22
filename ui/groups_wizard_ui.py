@@ -15,6 +15,12 @@ from ui.utils.search_utils import build_search_index, filter_values
 from ui.utils.format_utils import format_period_label, safe_key, sanitize_filename, generate_suggested_filename
 from logic.services import enrichment_service
 from logic.services.client_group_service import save_client_group, list_client_groups
+from logic.core.mapping import (
+    GROUPING_MODE_DEFAULT,
+    GROUPING_MODE_DISTRIBUTOR,
+    GROUPING_MODE_CNPJ,
+    GROUPING_MODE_NONE,
+)
 
 def _get_wizard_group() -> GroupState:
     """O Wizard foca em apenas 1 grupo (projeto) por vez."""
@@ -367,6 +373,12 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         unsafe_allow_html=True,
     )
     output_mode_label = "ZIP por período" if len(group.periods) > 1 else "Excel único"
+    grouping_mode_label = {
+        GROUPING_MODE_DEFAULT: "Agrupamento padrão",
+        GROUPING_MODE_DISTRIBUTOR: "Agrupado por distribuidora",
+        GROUPING_MODE_CNPJ: "Agrupado por CNPJ",
+        GROUPING_MODE_NONE: "Sem agrupamento",
+    }.get(group.grouping_mode, "Agrupamento padrão")
     with st.container(border=True):
         st.markdown(
             """
@@ -379,6 +391,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
             f"""
             <div class="wiz-chip-row">
                 <span class="wiz-chip">{output_mode_label}</span>
+                <span class="wiz-chip">{grouping_mode_label}</span>
+                <span class="wiz-chip">{'Com UCs filhas' if group.include_child_rows else 'Sem UCs filhas'}</span>
                 <span class="wiz-chip">{group.tipo_apresentacao}</span>
                 <span class="wiz-chip">{'Com resumo executivo' if group.incluir_resumo else 'Sem resumo executivo'}</span>
             </div>
@@ -418,18 +432,43 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
     from ui.state.group_state import (
-        set_tipo_apresentacao, set_incluir_resumo, set_somente_pendencias, set_separar_auditoria
+        set_grouping_mode, set_include_child_rows, set_tipo_apresentacao, set_incluir_resumo, set_somente_pendencias, set_separar_auditoria
     )
     with st.container(border=True):
         st.markdown(
             """
-            <div class="wiz-panel-title">Formato do arquivo</div>
-            <div class="wiz-panel-copy">Estas escolhas alteram a estrutura de entrega do arquivo, não o conjunto de clientes e períodos já definidos.</div>
+            <div class="wiz-panel-title">Organização do arquivo</div>
+            <div class="wiz-panel-copy">Defina como o conteúdo será agrupado e quanto detalhe aparecerá em cada bloco da memória de cálculo.</div>
             """,
             unsafe_allow_html=True,
         )
         col_apres1, col_apres2 = st.columns(2)
         with col_apres1:
+            new_grouping_mode = st.radio(
+                "Critério de agrupamento",
+                options=[
+                    GROUPING_MODE_DEFAULT,
+                    GROUPING_MODE_DISTRIBUTOR,
+                    GROUPING_MODE_CNPJ,
+                    GROUPING_MODE_NONE,
+                ],
+                format_func=lambda x: {
+                    GROUPING_MODE_DEFAULT: "Agrupamento Padrão",
+                    GROUPING_MODE_DISTRIBUTOR: "Agrupar por Distribuidora",
+                    GROUPING_MODE_CNPJ: "Agrupar por CNPJ",
+                    GROUPING_MODE_NONE: "Sem agrupamento",
+                }[x],
+                index=[
+                    GROUPING_MODE_DEFAULT,
+                    GROUPING_MODE_DISTRIBUTOR,
+                    GROUPING_MODE_CNPJ,
+                    GROUPING_MODE_NONE,
+                ].index(group.grouping_mode),
+                key=f"wiz_grouping_mode_{group.id}",
+            )
+            if new_grouping_mode != group.grouping_mode:
+                set_grouping_mode(group.id, new_grouping_mode)
+
             new_tipo = st.radio(
                 "Estrutura do arquivo",
                 options=["Separadores Múltiplos", "Tabela Única"],
@@ -440,6 +479,18 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 set_tipo_apresentacao(group.id, new_tipo)
 
         with col_apres2:
+            new_include_child_rows = st.checkbox(
+                "Incluir UCs filhas",
+                value=group.include_child_rows,
+                disabled=group.grouping_mode == GROUPING_MODE_NONE,
+                help="Quando desativado, o agrupamento exibe apenas a linha consolidada do grupo.",
+                key=f"wiz_include_children_{group.id}",
+            )
+            if group.grouping_mode == GROUPING_MODE_NONE and group.include_child_rows:
+                set_include_child_rows(group.id, False)
+            elif group.grouping_mode != GROUPING_MODE_NONE and new_include_child_rows != group.include_child_rows:
+                set_include_child_rows(group.id, new_include_child_rows)
+
             new_resumo = st.checkbox(
                 "Incluir Resumo Executivo",
                 value=group.incluir_resumo,
@@ -498,7 +549,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                             payload.clients,
                             [period],
                             incomplete_filter=payload.incomplete_filter,
-                            group_by_distributor=payload.group_by_distributor,
+                            grouping_mode=payload.grouping_mode,
+                            include_child_rows=payload.include_child_rows,
                             enrichment_df=payload.enrichment_df,
                             somente_pendencias=payload.somente_pendencias,
                             tipo_apresentacao=payload.tipo_apresentacao,
@@ -516,7 +568,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                     payload.clients, 
                     payload.periods, 
                     incomplete_filter=payload.incomplete_filter,
-                    group_by_distributor=payload.group_by_distributor,
+                    grouping_mode=payload.grouping_mode,
+                    include_child_rows=payload.include_child_rows,
                     enrichment_df=payload.enrichment_df,
                     somente_pendencias=payload.somente_pendencias,
                     tipo_apresentacao=payload.tipo_apresentacao,
@@ -560,17 +613,6 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         
         # Enriquecimento (automático — informativo)
         st.markdown("**Enriquecimento:** Aplicado automaticamente a partir de todos os perfis cadastrados na aba de Metadados.")
-        
-        from ui.state.group_state import set_group_by_distributor
-        # Toggle de Distribuidora
-        new_distrib = st.toggle(
-            "Agrupar faturas por Distribuidora",
-            value=group.group_by_distributor,
-            key=f"wiz_distributor_toggle_{group.id}",
-            help="Cria uma aba ou agrupamento por distribuidora de energia."
-        )
-        if new_distrib != group.group_by_distributor:
-            set_group_by_distributor(group.id, new_distrib)
         
         st.checkbox("Habilitar modo de depuração (Logs detalhados)", value=False)
 

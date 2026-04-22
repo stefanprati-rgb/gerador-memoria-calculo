@@ -24,6 +24,10 @@ from logic.core.mapping import (
     ACCOUNT_NUMBER_COL,
     SEPARATOR_ROW_FLAG,
     CHILD_ROW_FLAG,
+    GROUPING_MODE_DEFAULT,
+    GROUPING_MODE_DISTRIBUTOR,
+    GROUPING_MODE_CNPJ,
+    GROUPING_MODE_NONE,
 )
 from logic.core.cleaning import enforce_payment_rules
 import pandas as pd
@@ -103,7 +107,13 @@ class Orchestrator:
             "ucs_afetadas": ucs_afetadas
         }
 
-    def _apply_grouping(self, df: pd.DataFrame, group_by_distributor: bool = False) -> pd.DataFrame:
+    def _apply_grouping(
+        self,
+        df: pd.DataFrame,
+        grouping_mode: str = GROUPING_MODE_DEFAULT,
+        include_child_rows: bool = True,
+        group_by_distributor: bool = False,
+    ) -> pd.DataFrame:
         """
         Aplica a lógica de agrupamento de faturas.
         
@@ -111,16 +121,32 @@ class Orchestrator:
         (soma) as informações financeiras. A linha pai é colocada acima das linhas das UCs filhas.
         
         Args:
-            group_by_distributor: Se True, garante que o agrupamento considere a Distribuidora.
+            grouping_mode: Modo explícito de agrupamento.
+            include_child_rows: Se False, exibe apenas a linha pai dos grupos agregados.
+            group_by_distributor: Compatibilidade legada. Se True e grouping_mode default, promove para distributor.
         """
+        if grouping_mode == GROUPING_MODE_DEFAULT and group_by_distributor:
+            grouping_mode = GROUPING_MODE_DISTRIBUTOR
+
         if GROUPING_FLAG_COL not in df.columns:
             logger.info("Coluna '%s' não encontrada. Sem agrupamento.", GROUPING_FLAG_COL)
             df[PARENT_ROW_FLAG] = False
+            df[CHILD_ROW_FLAG] = False
+            df[SEPARATOR_ROW_FLAG] = False
+            return df
+
+        if grouping_mode == GROUPING_MODE_NONE:
+            logger.info("Modo 'Sem agrupamento' ativado.")
+            df = df.copy()
+            df[PARENT_ROW_FLAG] = False
+            df[CHILD_ROW_FLAG] = False
+            df[SEPARATOR_ROW_FLAG] = False
             return df
 
         # Garantir que a flag existe inicialmente como False nas filhas
         df = df.copy()
         df[PARENT_ROW_FLAG] = False
+        df[CHILD_ROW_FLAG] = False
         df[SEPARATOR_ROW_FLAG] = False
         
         if "Referencia" not in df.columns or CLIENT_COLUMN not in df.columns:
@@ -140,12 +166,19 @@ class Orchestrator:
         parent_count = 0
 
         # Determinar a base das chaves de agrupamento usando as colunas temporárias
-        if group_by_distributor:
+        if grouping_mode == GROUPING_MODE_DISTRIBUTOR:
             logger.info("Agrupamento por Distribuidora ativado: base ['_grp_Referencia', '_grp_Distribuidora'].")
             if "_grp_Distribuidora" in df.columns:
                 keys = ["_grp_Referencia", "_grp_Distribuidora"]
             else:
                 logger.warning("Agrupamento por Distribuidora solicitado mas coluna não encontrada. Usando _grp_Cliente.")
+                keys = ["_grp_Referencia", f"_grp_{CLIENT_COLUMN}"]
+        elif grouping_mode == GROUPING_MODE_CNPJ:
+            logger.info("Agrupamento por CNPJ ativado: base ['_grp_Referencia', '_grp_CPF/CNPJ'].")
+            if "_grp_CPF/CNPJ" in df.columns:
+                keys = ["_grp_Referencia", "_grp_CPF/CNPJ"]
+            else:
+                logger.warning("Agrupamento por CNPJ solicitado mas coluna não encontrada. Usando _grp_Cliente.")
                 keys = ["_grp_Referencia", f"_grp_{CLIENT_COLUMN}"]
         else:
             # Comportamento padrão: Agrupar considerando Referência e Razão Social (normalizados)
@@ -164,7 +197,7 @@ class Orchestrator:
                 )
 
         # Determinar chaves adicionais de hierarquia (IBM -> Hierarchy -> No. UC)
-        if not group_by_distributor:
+        if grouping_mode == GROUPING_MODE_DEFAULT:
             if GROUPING_IBM_COL in df.columns and not df[GROUPING_IBM_COL].isna().all():
                 df["group_key"] = df[GROUPING_IBM_COL].fillna(df[HIERARCHY_KEY_COL].fillna(df[ENRICHMENT_KEY]))
                 keys.append("group_key")
@@ -194,7 +227,10 @@ class Orchestrator:
             if HIERARCHY_PARENT_COL in group_df.columns:
                 mask_main = group_df[HIERARCHY_PARENT_COL].astype(str).str.strip().str.upper() == HIERARCHY_PARENT_VALUE
             
-            is_group = (mask_agrup.any() or mask_main.any() or group_by_distributor) and len(group_df) > 1
+            if grouping_mode == GROUPING_MODE_DEFAULT:
+                is_group = (mask_agrup.any() or mask_main.any()) and len(group_df) > 1
+            else:
+                is_group = len(group_df) > 1
             
             if is_group:
                 # CRIAR A FATURA PAI
@@ -214,9 +250,10 @@ class Orchestrator:
                 
                 # Juntar a linha pai e as linhas filhas do grupo (Preserva a integridade: Pai + Filhas)
                 grouped_dfs.append(pd.DataFrame([parent_row]))
-                child_df = group_df.copy()
-                child_df[CHILD_ROW_FLAG] = True
-                grouped_dfs.append(child_df)
+                if include_child_rows:
+                    child_df = group_df.copy()
+                    child_df[CHILD_ROW_FLAG] = True
+                    grouped_dfs.append(child_df)
                 parent_count += 1
             else:
                 normal_df = group_df.copy()
@@ -225,7 +262,7 @@ class Orchestrator:
             
             # Adicionar Linha Separadora (Fantasma) em branco após o grupo
             # Criamos uma linha com todas as colunas vazias, exceto o flag SEPARATOR_ROW_FLAG
-            separator_row = pd.DataFrame([{SEPARATOR_ROW_FLAG: True}])
+            separator_row = pd.DataFrame([{SEPARATOR_ROW_FLAG: True, CHILD_ROW_FLAG: False, PARENT_ROW_FLAG: False}])
             grouped_dfs.append(separator_row)
 
         if grouped_dfs:
@@ -235,7 +272,13 @@ class Orchestrator:
         df.drop(columns=[c for c in _temp_cols if c in df.columns], inplace=True, errors='ignore')
         df.drop(columns=["group_key", "dynamic_key"], inplace=True, errors='ignore')
 
-        logger.info("Agrupamento: %d faturas pai geradas. Total de linhas agora: %d.", parent_count, len(df))
+        logger.info(
+            "Agrupamento (%s | filhas=%s): %d faturas pai geradas. Total de linhas agora: %d.",
+            grouping_mode,
+            include_child_rows,
+            parent_count,
+            len(df),
+        )
         return df
 
 
@@ -304,17 +347,27 @@ class Orchestrator:
         )
         return df
 
-    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None, somente_pendencias: bool = False, tipo_apresentacao: str = "Tabela Única", incluir_resumo: bool = False, separar_auditoria: bool = False) -> Optional[bytes]:
+    def generate(self, selected_clients: List[str], selected_periods: List[str], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None, somente_pendencias: bool = False, tipo_apresentacao: str = "Tabela Única", incluir_resumo: bool = False, separar_auditoria: bool = False, grouping_mode: str = GROUPING_MODE_DEFAULT, include_child_rows: bool = True) -> Optional[bytes]:
         """
         Filtra a base, aplica agrupamento e gera o arquivo Excel com os dados mapeados.
         
         Args:
             incomplete_filter: 'all' (tudo), 'complete_only' (sem incompletos), 'incomplete_only' (só incompletos).
-            group_by_distributor: Se True, aplica a regra de agrupamento por Distribuidora.
+            group_by_distributor: Compatibilidade legada.
             enrichment_df: DataFrame extra para enriquecer os dados base via merge por 'No. UC'.
         """
-        logger.info("Gerando planilha para %d clientes, %d períodos. Filtro: %s | Agrupar por Distribuidora: %s | Enriquecimento: %s", 
-                    len(selected_clients), len(selected_periods), incomplete_filter, group_by_distributor, enrichment_df is not None)
+        if grouping_mode == GROUPING_MODE_DEFAULT and group_by_distributor:
+            grouping_mode = GROUPING_MODE_DISTRIBUTOR
+
+        logger.info(
+            "Gerando planilha para %d clientes, %d períodos. Filtro: %s | Agrupamento: %s | Filhas: %s | Enriquecimento: %s",
+            len(selected_clients),
+            len(selected_periods),
+            incomplete_filter,
+            grouping_mode,
+            include_child_rows,
+            enrichment_df is not None,
+        )
 
         filtered_df = self.reader.filter_data(selected_clients, selected_periods)
 
@@ -364,7 +417,12 @@ class Orchestrator:
 
 
         # Fluxo de Layout Único (14 Colunas + Classificação)
-        processed_df = self._apply_grouping(filtered_df, group_by_distributor=group_by_distributor)
+        processed_df = self._apply_grouping(
+            filtered_df,
+            grouping_mode=grouping_mode,
+            include_child_rows=include_child_rows,
+            group_by_distributor=group_by_distributor,
+        )
         processed_df = self._apply_classification(processed_df)
         
         # 1. Garantir que todas as colunas do mapping existam (defensivo)
@@ -381,7 +439,7 @@ class Orchestrator:
         
         # 3. Reordenar e incluir colunas extras no final do DataFrame
         final_columns = legacy_keys + extra_cols
-        processed_df = processed_df.reindex(columns=final_columns + [PARENT_ROW_FLAG, SEPARATOR_ROW_FLAG])
+        processed_df = processed_df.reindex(columns=final_columns + [PARENT_ROW_FLAG, CHILD_ROW_FLAG, SEPARATOR_ROW_FLAG])
         
         # 4. Construir o mapping completo (Orderly) preservando a ordem do Excel
         from collections import OrderedDict
@@ -409,7 +467,7 @@ class Orchestrator:
         logger.info("Planilha gerada com sucesso (%d bytes).", len(excel_bytes))
         return excel_bytes
 
-    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None, somente_pendencias: bool = False, tipo_apresentacao: str = "Tabela Única", incluir_resumo: bool = False, separar_auditoria: bool = False) -> Optional[bytes]:
+    def generate_multiple(self, groups: List[Dict[str, Any]], incomplete_filter: str = "all", group_by_distributor: bool = False, enrichment_df: pd.DataFrame = None, somente_pendencias: bool = False, tipo_apresentacao: str = "Tabela Única", incluir_resumo: bool = False, separar_auditoria: bool = False, grouping_mode: str = GROUPING_MODE_DEFAULT, include_child_rows: bool = True) -> Optional[bytes]:
         """
         Recebe uma lista de dicionários com chaves 'name', 'clients' (List[str]), e 'periods' (List[str]).
         Retorna um arquivo ZIP em bytes contendo todos os arquivos Excel gerados com suporte a enriquecimento.
@@ -417,7 +475,16 @@ class Orchestrator:
         import zipfile
         import io
 
-        logger.info("Gerando lote com %d grupos. Filtro: %s | Agrupar por Distribuidora: %s", len(groups), incomplete_filter, group_by_distributor)
+        if grouping_mode == GROUPING_MODE_DEFAULT and group_by_distributor:
+            grouping_mode = GROUPING_MODE_DISTRIBUTOR
+
+        logger.info(
+            "Gerando lote com %d grupos. Filtro: %s | Agrupamento: %s | Filhas: %s",
+            len(groups),
+            incomplete_filter,
+            grouping_mode,
+            include_child_rows,
+        )
 
         zip_buffer = io.BytesIO()
         generated_count = 0
@@ -437,6 +504,8 @@ class Orchestrator:
                     periods, 
                     incomplete_filter=incomplete_filter, 
                     group_by_distributor=group_by_distributor,
+                    grouping_mode=grouping_mode,
+                    include_child_rows=include_child_rows,
                     enrichment_df=enrichment_df,
                     somente_pendencias=somente_pendencias,
                     tipo_apresentacao=tipo_apresentacao,

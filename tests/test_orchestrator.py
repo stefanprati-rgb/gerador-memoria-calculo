@@ -7,7 +7,11 @@ import zipfile
 import io
 
 from logic.services.orchestrator import Orchestrator
-from logic.core.mapping import PARENT_ROW_FLAG
+from logic.core.mapping import (
+    PARENT_ROW_FLAG,
+    GROUPING_MODE_CNPJ,
+    GROUPING_MODE_NONE,
+)
 
 
 class TestOrchestrator:
@@ -129,6 +133,37 @@ class TestAgrupamento:
         parent_rows = result[result[PARENT_ROW_FLAG] == True]
         assert len(parent_rows) == 1
         assert len(result) == original_len + 1 + 5 # Dados + 1 Pai + 5 Separadores = 12 total
+
+    def test_agrupamento_por_cnpj_cria_fatura_pai(self, sample_base_xlsx, sample_template_xlsx):
+        """O modo por CNPJ deve agrupar registros do mesmo período/documento mesmo sem depender da regra padrão."""
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+        filtered = orch.reader.filter_data(["Cliente Gamma"], orch.get_available_periods())
+
+        result = orch._apply_grouping(filtered, grouping_mode=GROUPING_MODE_CNPJ)
+
+        parent_rows = result[result[PARENT_ROW_FLAG] == True]
+        assert len(parent_rows) == 1
+        assert parent_rows.iloc[0]["Valor Enviado Emissão"] == pytest.approx(380.00)
+
+    def test_sem_agrupamento_preserva_linhas_originais(self, sample_base_xlsx, sample_template_xlsx):
+        """O modo sem agrupamento deve manter apenas as linhas originais, sem pai nem separador."""
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+        filtered = orch.reader.filter_data(["Cliente Gamma"], orch.get_available_periods())
+
+        result = orch._apply_grouping(filtered, grouping_mode=GROUPING_MODE_NONE)
+
+        assert len(result) == len(filtered)
+        assert result[PARENT_ROW_FLAG].sum() == 0
+
+    def test_ocultar_ucs_filhas_mantem_apenas_linha_pai(self, sample_base_xlsx, sample_template_xlsx):
+        """Quando a opção de filhas está desativada, o grupo mostra apenas a linha consolidada e o separador."""
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+        filtered = orch.reader.filter_data(["Cliente Gamma"], orch.get_available_periods())
+
+        result = orch._apply_grouping(filtered, include_child_rows=False)
+
+        assert len(result) == 2
+        assert result.iloc[0][PARENT_ROW_FLAG] == True
 
 
 class TestGenerateMultiple:

@@ -14,7 +14,8 @@ class GenerationPayload:
     clients: List[str]
     periods: List[str]
     incomplete_filter: str
-    group_by_distributor: bool
+    grouping_mode: str
+    include_child_rows: bool
     enrichment_df: Optional[Any]
     somente_pendencias: bool
     tipo_apresentacao: str
@@ -64,7 +65,8 @@ class WizardViewModel:
             clients=group.clients,
             periods=group.periods,
             incomplete_filter=incomplete_filter,
-            group_by_distributor=group.group_by_distributor,
+            grouping_mode=group.grouping_mode,
+            include_child_rows=group.include_child_rows,
             enrichment_df=enrichment_df,
             somente_pendencias=group.somente_pendencias,
             tipo_apresentacao=group.tipo_apresentacao,
@@ -79,8 +81,9 @@ class WizardViewModel:
     def load_shortcut(group_id: int, shortcut_name: str) -> bool:
         """Carrega clientes e configurações de um grupo salvo e sincroniza com o GroupState."""
         from logic.services.client_group_service import get_clients_from_group
-        from ui.state.group_state import select_clients, set_custom_group_name, set_group_by_distributor
+        from ui.state.group_state import select_clients, set_custom_group_name, set_grouping_mode
         from logic.services.enrichment_service import enrichment_service
+        from logic.core.mapping import GROUPING_MODE_DEFAULT, GROUPING_MODE_DISTRIBUTOR
         import pandas as pd
         import logging
 
@@ -101,7 +104,7 @@ class WizardViewModel:
                     res = profile.get("group_by_distributor", False)
                     if not isinstance(res, (pd.Series, pd.DataFrame)):
                         val = res
-                set_group_by_distributor(group_id, bool(val))
+                set_grouping_mode(group_id, GROUPING_MODE_DISTRIBUTOR if bool(val) else GROUPING_MODE_DEFAULT)
         except Exception as e:
             logging.getLogger(__name__).error("Erro ao sincronizar regras de perfil: %s", e)
 

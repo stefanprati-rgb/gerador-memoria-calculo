@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List
 import streamlit as st
+from logic.core.mapping import GROUPING_MODE_DEFAULT, GROUPING_MODE_DISTRIBUTOR
 
 @dataclass
 class GroupState:
@@ -10,6 +11,8 @@ class GroupState:
     clients: List[str] = field(default_factory=list)
     periods: List[str] = field(default_factory=list)
     group_by_distributor: bool = False
+    grouping_mode: str = GROUPING_MODE_DEFAULT
+    include_child_rows: bool = True
     is_auto_name: bool = True
     somente_pendencias: bool = False
     tipo_apresentacao: str = "Separadores Múltiplos"
@@ -125,6 +128,18 @@ def set_group_by_distributor(group_id: int, value: bool) -> None:
     group = get_group(group_id)
     if group:
         group.group_by_distributor = value
+        group.grouping_mode = GROUPING_MODE_DISTRIBUTOR if value else GROUPING_MODE_DEFAULT
+
+def set_grouping_mode(group_id: int, value: str) -> None:
+    group = get_group(group_id)
+    if group:
+        group.grouping_mode = value
+        group.group_by_distributor = value == GROUPING_MODE_DISTRIBUTOR
+
+def set_include_child_rows(group_id: int, value: bool) -> None:
+    group = get_group(group_id)
+    if group:
+        group.include_child_rows = value
 
 def set_tipo_apresentacao(group_id: int, value: str) -> None:
     group = get_group(group_id)
