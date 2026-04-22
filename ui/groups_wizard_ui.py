@@ -533,6 +533,21 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         elapsed = time.time() - start_time
         if final_data:
             st.toast(f"Planilha pronta em {elapsed:.1f}s!", icon="✅")
+            with st.container(border=True):
+                st.success(
+                    f"Arquivo preparado com sucesso em {elapsed:.1f}s. "
+                    f"Formato final: {'ZIP por período' if payload.is_multiplexed else 'Excel único'}."
+                )
+                if metrics.incomplete_count > 0:
+                    if payload.incomplete_filter == "all":
+                        st.warning("O arquivo foi gerado incluindo registros completos e incompletos.")
+                    elif payload.incomplete_filter == "complete_only":
+                        st.info("O arquivo foi gerado somente com registros completos.")
+                    elif payload.incomplete_filter == "incomplete_only":
+                        st.info("O arquivo foi gerado apenas com registros que exigem revisão.")
+                elif group.somente_pendencias:
+                    st.info("O filtro para ocultar registros pagos foi aplicado na geração.")
+
             st.download_button(
                 label=f"📥 Baixar Arquivo {'ZIP' if payload.is_multiplexed else 'Excel'}",
                 data=final_data,
@@ -542,7 +557,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 type="primary"
             )
         else:
-            st.error("Erro na geração: Verifique os critérios selecionados.")
+            st.error("Nenhum arquivo foi gerado para o escopo atual. Revise clientes, períodos e filtros aplicados.")
 
     # --- OPÇÕES AVANÇADAS (As Engrenagens Escondidas) ---
     st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)

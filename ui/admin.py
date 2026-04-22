@@ -62,14 +62,17 @@ def render_admin_panel():
                 result = vm.process_uploads(balanco_up.getvalue(), gestao_up.getvalue(), state)
 
                 if result.success:
-                    st.success("Bases processadas com sucesso.")
                     if result.warning_message:
-                        st.warning(result.warning_message)
-                    notify_completion("Bases processadas e arquivos cruzados.")
+                        st.warning("Bases processadas localmente, mas o backup online não foi concluído.")
+                        st.caption(result.warning_message)
+                        notify_completion("Bases processadas localmente.")
+                    else:
+                        st.success("Bases processadas com sucesso e backup online concluído.")
+                        notify_completion("Bases processadas e backup concluído.")
                     time.sleep(2)
                     st.rerun()
                 else:
-                    st.error("Erro interno ao gerar o cache consolidado. Verifique os logs.")
+                    st.error("Falha no processamento das bases. O cache consolidado não foi atualizado.")
 
         # === FEATURE: Relatório de Pendências ===
         st.markdown("---")
