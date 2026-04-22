@@ -59,10 +59,12 @@ def render_admin_panel():
 
         if st.button("Sincronizar e Processar", width='stretch', disabled=not can_sync, icon="⚙️"):
             with st.spinner("Processando e cruzando dados. Isso pode levar alguns minutos..."):
-                success = vm.process_uploads(balanco_up.getvalue(), gestao_up.getvalue(), state)
+                result = vm.process_uploads(balanco_up.getvalue(), gestao_up.getvalue(), state)
 
-                if success:
+                if result.success:
                     st.success("Bases processadas com sucesso.")
+                    if result.warning_message:
+                        st.warning(result.warning_message)
                     notify_completion("Bases processadas e arquivos cruzados.")
                     time.sleep(2)
                     st.rerun()

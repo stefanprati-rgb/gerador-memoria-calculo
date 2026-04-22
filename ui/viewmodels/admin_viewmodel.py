@@ -12,6 +12,13 @@ class AdminState:
     firebase_adapter: Optional[FirebaseAdapter] = None
     firebase_warning: Optional[str] = None
 
+
+@dataclass
+class UploadProcessingResult:
+    success: bool
+    warning_message: Optional[str] = None
+
+
 class AdminViewModel:
     def __init__(self, mode: str = "development"):
         self.mode = mode
@@ -55,8 +62,11 @@ class AdminViewModel:
         except Exception as e:
             return None, f"Erro inesperado no adaptador Firebase: {e}"
 
-    def process_uploads(self, balanco_bytes: bytes, gestao_bytes: bytes, state: AdminState) -> bool:
+    def process_uploads(self, balanco_bytes: bytes, gestao_bytes: bytes, state: AdminState) -> UploadProcessingResult:
         """Processa os uploads de arquivos em cache e opcionalmente no Firebase."""
         from logic.services.sync_service import build_consolidated_cache_from_uploads
-        success, _ = build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, state.firebase_adapter)
-        return success
+        success, report = build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, state.firebase_adapter)
+        warning_message = state.firebase_warning
+        if report and report.get("backup_warning"):
+            warning_message = report["backup_warning"]
+        return UploadProcessingResult(success=success, warning_message=warning_message)

@@ -60,6 +60,7 @@ def build_consolidated_cache_from_uploads(balanco_bytes: bytes, gestao_bytes: by
             logger.warning("Erro ao salvar Gestão localmente: %s", e)
 
     # 2. Backup opcional no Firebase Storage
+    backup_warning = None
     if firebase_client:
         try:
             firebase_client.upload_file(balanco_bytes, BALANCO_REMOTE)
@@ -67,9 +68,16 @@ def build_consolidated_cache_from_uploads(balanco_bytes: bytes, gestao_bytes: by
                 firebase_client.upload_file(gestao_bytes, GESTAO_REMOTE)
             logger.info("Backup no Firebase realizado com sucesso.")
         except Exception as e:
+            backup_warning = f"Backup na nuvem falhou: {e}"
             logger.warning("Backup no Firebase falhou (continuando sem nuvem): %s", e)
 
-    return _process_dataframes(BALANCO_LOCAL, gestao_bytes, GESTAO_LOCAL)
+    success, report = _process_dataframes(BALANCO_LOCAL, gestao_bytes, GESTAO_LOCAL)
+    if backup_warning:
+        if report is None:
+            report = {"backup_warning": backup_warning}
+        else:
+            report["backup_warning"] = backup_warning
+    return success, report
 
 def build_consolidated_cache_from_local_network(network_path: str) -> tuple[bool, dict | None]:
     """
