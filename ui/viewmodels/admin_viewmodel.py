@@ -60,6 +60,6 @@ class AdminViewModel:
 
     def process_uploads(self, balanco_bytes: bytes, gestao_bytes: bytes, state: AdminState) -> bool:
         """Processa os uploads de arquivos em cache e opcionalmente no Firebase."""
-        from logic.services.orchestrator import build_consolidated_cache_from_uploads
+        from logic.services.sync_service import build_consolidated_cache_from_uploads
         success, _ = build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, state.firebase_adapter)
         return success

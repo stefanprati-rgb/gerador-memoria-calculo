@@ -1,8 +1,7 @@
 import pandas as pd
-import re
 from datetime import datetime
 import logging
-import warnings
+from logic.core.dates import format_full_date, parse_full_date, format_reference_period
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +34,9 @@ def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
         if col not in df_clean.columns:
             df_clean[col] = pd.NA
 
-    def format_vencimento(val):
-        from logic.core.dates import format_full_date
-        return format_full_date(val, default="Não disponível")
-
-    from logic.core.dates import parse_full_date
     df_clean["_venc_date_temp"] = df_clean[col_venc].apply(parse_full_date)
     
-    df_clean[col_venc] = df_clean[col_venc].apply(format_vencimento)
+    df_clean[col_venc] = df_clean[col_venc].apply(lambda val: format_full_date(val, default="Não disponível"))
 
     # --- Regras 2 e 3: Situação do Pagamento e Consistência ---
     def avaliar_situacao(row):
@@ -58,7 +52,6 @@ def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
             str_pag = str(data_pag).strip().lower()
             if str_pag not in invalids:
                 try:
-                    from logic.core.dates import parse_full_date
                     ts_pag = parse_full_date(data_pag)
                     if ts_pag is not None:
                         tem_pagamento_valido = True
@@ -107,8 +100,9 @@ def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
 
 def sanitize_reference_period(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Higieniza a coluna de Referência (mês/ano) e valida o formato via regex.
-    Garante que valores como '12/2025' ou '12-2025' sejam normalizados e válidos.
+    Higieniza a coluna de Referência (mês/ano).
+    Garante que valores válidos sejam normalizados para MM/YYYY
+    e que valores inválidos não escapem do saneamento.
     """
     if df.empty or "Referencia" not in df.columns:
         return df
@@ -116,11 +110,10 @@ def sanitize_reference_period(df: pd.DataFrame) -> pd.DataFrame:
     df_clean = df.copy()
 
     def validate_ref(val):
-        from logic.core.dates import format_reference_period
-        return format_reference_period(val, default=val if pd.notna(val) else pd.NA)
+        if pd.isna(val):
+            return pd.NA
+        return format_reference_period(val, default="Não disponível")
 
     df_clean["Referencia"] = df_clean["Referencia"].apply(validate_ref)
-    
-    # Validação final: se sobrou algo que não bate com a regex (e não é nulo)
-    # podemos decidir se limpamos ou se deixamos para o log
+
     return df_clean

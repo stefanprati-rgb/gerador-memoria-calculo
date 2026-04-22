@@ -59,3 +59,29 @@ def test_admin_viewmodel_firebase_warning(mock_adapter_class):
     
     assert fb is None
     assert "Backup na nuvem indisponível: Bucket missing" in warn
+
+
+def test_admin_viewmodel_process_uploads_uses_sync_service(monkeypatch):
+    import logic.services.sync_service as sync_service
+
+    captured = {}
+
+    def fake_build_consolidated_cache_from_uploads(balanco_bytes, gestao_bytes, firebase_adapter):
+        captured["balanco_bytes"] = balanco_bytes
+        captured["gestao_bytes"] = gestao_bytes
+        captured["firebase_adapter"] = firebase_adapter
+        return True, None
+
+    monkeypatch.setattr(sync_service, "build_consolidated_cache_from_uploads", fake_build_consolidated_cache_from_uploads)
+
+    vm = AdminViewModel()
+    state = AdminState(firebase_adapter="adapter-mock")
+
+    success = vm.process_uploads(b"balanco", b"gestao", state)
+
+    assert success is True
+    assert captured == {
+        "balanco_bytes": b"balanco",
+        "gestao_bytes": b"gestao",
+        "firebase_adapter": "adapter-mock",
+    }

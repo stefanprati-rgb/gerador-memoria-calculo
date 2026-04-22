@@ -8,8 +8,6 @@ Otimizações de performance:
 - Compatível com @st.cache_data no app.py
 """
 import pandas as pd
-from datetime import datetime
-import warnings
 from typing import List, Dict, Any, Optional
 from logic.core.mapping import (
     get_base_columns,
@@ -27,6 +25,7 @@ from logic.core.mapping import (
     CHILD_ROW_FLAG,
     CLASSIFICATION_LABEL_REGRA,
 )
+from logic.core.dates import format_reference_period, format_full_date
 
 import logging
 
@@ -232,60 +231,12 @@ class TemplateExcelWriter:
         """
         if val is None or pd.isna(val):
             return None
-            
-        import re
-        # Se já estiver no formato alvo MM/YYYY, retorna direto
-        if isinstance(val, str):
-            val = val.strip()
-            if re.match(r"^\d{2}/\d{4}$", val):
-                return val
-            if re.match(r"^\d{2}-\d{4}$", val):
-                return val.replace("-", "/")
-
-            # FIX: ISO date format (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS) must be detected
-            # before pd.to_datetime(dayfirst=True) which would swap day/month
-            iso_match = re.match(r'^(\d{4})-(\d{1,2})-\d{1,2}', val)
-            if iso_match:
-                year = iso_match.group(1)
-                month = iso_match.group(2).zfill(2)
-                return f"{month}/{year}"
-        
-        if isinstance(val, (pd.Timestamp, datetime)):
-            return val.strftime("%m/%Y")
-            
-        try:
-            # Tenta converter, mas força o resultado para MM/YYYY
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', category=UserWarning, message='.*Parsing dates in.*')
-                ts = pd.to_datetime(val, dayfirst=True, errors='coerce')
-            if pd.notna(ts):
-                return ts.strftime("%m/%Y")
-            return str(val)
-        except Exception:
-            return str(val)
+        return format_reference_period(val, default=str(val))
 
     @staticmethod
     def _format_date_full(val) -> Optional[str]:
         """Converte datetime/Timestamp/str em string DD-MM-YYYY ou texto literal."""
-        if val is None or pd.isna(val):
-            return "Não disponível"
-            
-        # Se já for o nosso literal de regra de negócio, deixa passar
-        if isinstance(val, str) and val == "Não disponível":
-            return val
-            
-        if isinstance(val, (pd.Timestamp,)):
-            return val.strftime("%d-%m-%Y")
-        try:
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', category=UserWarning, message='.*Parsing dates in.*')
-                ts = pd.to_datetime(val, dayfirst=True)
-            return ts.strftime("%d-%m-%Y")
-        except Exception:
-            if isinstance(val, str):
-                # Tentar limpar barras se existirem
-                return val.replace("/", "-")
-            return str(val)
+        return format_full_date(val)
 
     @staticmethod
     def _format_document(val) -> Optional[str]:
