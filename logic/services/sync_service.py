@@ -169,21 +169,10 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             all_gestao_ucs = set(df_gestao["No. UC_norm"].unique())
 
             def parse_ref(val):
-                if pd.isna(val): return pd.NaT
-                s = str(val).strip()
-                try:
-                    parts = s.replace("/", "-").split("-")
-                    if len(parts) == 2:
-                        if len(parts[0]) == 4: # YYYY-MM
-                            return pd.Timestamp(year=int(parts[0]), month=int(parts[1]), day=1)
-                        else: # MM-YYYY
-                            return pd.Timestamp(year=int(parts[1]), month=int(parts[0]), day=1)
-                except:
-                    pass
-                # Força dayfirst=True para evitar confusão entre 11/12 (Nov/Dez) e 12/11 (Dez/Nov)
-                dt = pd.to_datetime(val, errors="coerce", dayfirst=True)
-                if pd.notna(dt):
-                    return dt.replace(day=1)
+                from logic.core.dates import parse_reference_period
+                ref_str = parse_reference_period(val)
+                if ref_str:
+                    return pd.Timestamp(year=int(ref_str[3:]), month=int(ref_str[:2]), day=1)
                 return pd.NaT
 
             # 3. Normalizar chaves em ambas as bases para detecção de cancelados
@@ -193,12 +182,13 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             if ref_col:
                 df_gestao[ref_merge_col] = df_gestao[ref_col].apply(parse_ref)
                 
-                # Garantir que a Referencia do Balanço seja tratada como datetime corretamente,
-                # respeitando o formato DD/MM/YYYY se for string.
-                ref_series = df_consolidado["Referencia"]
-                # Tenta converter explicitamente assumindo dia/mês/ano se for string text
-                ref_dt = pd.to_datetime(ref_series, errors="coerce", dayfirst=True)
-                df_consolidado[ref_merge_col] = ref_dt.dt.to_period('M').dt.to_timestamp()
+                from logic.core.dates import parse_reference_period
+                def map_ref(val):
+                    ref_str = parse_reference_period(val)
+                    if ref_str:
+                        return pd.Timestamp(year=int(ref_str[3:]), month=int(ref_str[:2]), day=1)
+                    return pd.NaT
+                df_consolidado[ref_merge_col] = df_consolidado["Referencia"].apply(map_ref)
 
             # REVERTIDO: Não removemos mais faturas do Balanço com base na Gestão (evitar "deduplicação assassina")
             # Deixamos que apareçam e o usuário decida ou o status indique o problema.
@@ -246,9 +236,8 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             # Assim keep="first" preserva sempre o vencimento mais recente
             # entre duplicatas do mesmo UC + Período
             if "Vencimento" in df_gestao.columns:
-                df_gestao["_venc_sort"] = pd.to_datetime(
-                    df_gestao["Vencimento"], dayfirst=True, errors="coerce"
-                )
+                from logic.core.dates import parse_full_date
+                df_gestao["_venc_sort"] = df_gestao["Vencimento"].apply(parse_full_date)
                 df_gestao = df_gestao.sort_values("_venc_sort", ascending=False)
             
             # Reportar duplicatas ANTES do drop (para transparência)
@@ -365,7 +354,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
         logger.info("Base de Gestão não disponível. Seguindo sem Vencimento/Status extra.")
 
     # 5. Corrigir colunas com dtype misto para evitar falha no Parquet
-    for col in df_consolidado.select_dtypes(include=["object"]).columns:
+    for col in df_consolidado.select_dtypes(include=["object", "string"]).columns:
         if col in _TEXT_COLUMNS:
             df_consolidado[col] = df_consolidado[col].astype(str).replace("nan", pd.NA)
             continue

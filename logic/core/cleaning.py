@@ -35,27 +35,12 @@ def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
         if col not in df_clean.columns:
             df_clean[col] = pd.NA
 
-    # --- Regra 1: Data de Vencimento (Blindagem) ---
     def format_vencimento(val):
-        invalids = ["", "-", "n/a", "não", "none", "nan", "nat"]
-        if pd.isna(val) or str(val).strip().lower() in invalids:
-            return "Não disponível"
-        try:
-            # Parse flexível de data
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=UserWarning, message=".*Parsing dates in.*")
-                ts = pd.to_datetime(val, dayfirst=True, errors='coerce')
-            if pd.isna(ts):
-                return "Não disponível"
-            return ts.strftime("%d-%m-%Y")
-        except:
-            return "Não disponível"
+        from logic.core.dates import format_full_date
+        return format_full_date(val, default="Não disponível")
 
-    # Criamos uma coluna temporária com tipo datetime para fazer comparações lógicas
-    # (respeitando o dayfirst=True para o padrão brasileiro)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning, message=".*Parsing dates in.*")
-        df_clean["_venc_date_temp"] = pd.to_datetime(df_clean[col_venc], dayfirst=True, errors='coerce')
+    from logic.core.dates import parse_full_date
+    df_clean["_venc_date_temp"] = df_clean[col_venc].apply(parse_full_date)
     
     df_clean[col_venc] = df_clean[col_venc].apply(format_vencimento)
 
@@ -72,11 +57,12 @@ def enforce_payment_rules(df: pd.DataFrame) -> pd.DataFrame:
         if pd.notna(data_pag):
             str_pag = str(data_pag).strip().lower()
             if str_pag not in invalids:
-                # Tentar converter para data para garantir que é um dado válido
                 try:
-                    ts_pag = pd.to_datetime(data_pag, dayfirst=True, errors='coerce')
-                    if pd.notna(ts_pag):
+                    from logic.core.dates import parse_full_date
+                    ts_pag = parse_full_date(data_pag)
+                    if ts_pag is not None:
                         tem_pagamento_valido = True
+                        data_pag = ts_pag.strftime("%d-%m-%Y") # Normaliza a data
                 except:
                     pass
         
@@ -128,30 +114,10 @@ def sanitize_reference_period(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     df_clean = df.copy()
-    regex_ref = re.compile(r"^(0[1-9]|1[0-2])[-/](\d{4})$")
 
     def validate_ref(val):
-        if pd.isna(val):
-            return val
-        
-        s_val = str(val).strip()
-        match = regex_ref.match(s_val)
-        if match:
-            # Normaliza para MM/YYYY
-            return f"{match.group(1)}/{match.group(2)}"
-        
-        # Se for um datetime, converte para MM/YYYY
-        if isinstance(val, (datetime, pd.Timestamp)):
-            return val.strftime("%m/%Y")
-            
-        # Tratar formato ISO YYYY-MM-DD (com ou sem timestamp)
-        iso_match = re.match(r'^(\d{4})-(\d{1,2})-\d{1,2}', s_val)
-        if iso_match:
-            year = iso_match.group(1)
-            month = iso_match.group(2).zfill(2)
-            return f"{month}/{year}"
-
-        return val
+        from logic.core.dates import format_reference_period
+        return format_reference_period(val, default=val if pd.notna(val) else pd.NA)
 
     df_clean["Referencia"] = df_clean["Referencia"].apply(validate_ref)
     
