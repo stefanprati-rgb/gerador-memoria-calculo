@@ -142,6 +142,12 @@ class BaseExcelReader:
         """Remove espaços extras dos nomes de colunas para evitar falhas por diferenças mínimas."""
         self.df.columns = self.df.columns.str.strip()
 
+    @staticmethod
+    def _normalize_period_value(value: Any) -> str:
+        """Normaliza referência para MM/YYYY; retorna string vazia se inválida."""
+        normalized = format_reference_period(value, default="")
+        return normalized.strip() if isinstance(normalized, str) else ""
+
     def _validate_columns(self):
         """Valida se todas as colunas esperadas pelo mapeamento estão presentes na base."""
         expected = get_base_columns()
@@ -163,18 +169,57 @@ class BaseExcelReader:
         """Retorna lista de períodos (Referencia) únicos."""
         if PERIOD_COLUMN not in self.df.columns:
             return []
-        periods = self.df[PERIOD_COLUMN].dropna().unique().tolist()
-        return sorted([str(p) for p in periods])
+        normalized_periods = (
+            self.df[PERIOD_COLUMN]
+            .dropna()
+            .map(self._normalize_period_value)
+        )
+        valid_periods = sorted({p for p in normalized_periods if p})
+        return valid_periods
 
     def filter_data(self, clients: List[str], periods: List[str]) -> pd.DataFrame:
         """Filtra o DataFrame pelos clientes e períodos especificados."""
+        if not clients or not periods:
+            return pd.DataFrame(columns=self.df.columns)
+            
         mask = pd.Series(True, index=self.df.index)
 
         if clients:
-            mask = mask & (self.df[CLIENT_COLUMN].isin(clients))
+            client_mask = self.df[CLIENT_COLUMN].isin(clients)
+
+            # Quando há variação de Razão Social para o mesmo documento,
+            # inclui todas as linhas do mesmo CPF/CNPJ dos clientes selecionados.
+            if "CPF/CNPJ" in self.df.columns:
+                def _normalize_doc(v: Any) -> str:
+                    if pd.isna(v):
+                        return ""
+                    return "".join(ch for ch in str(v) if ch.isdigit())
+
+                selected_docs = (
+                    self.df.loc[client_mask, "CPF/CNPJ"]
+                    .map(_normalize_doc)
+                    .replace("", pd.NA)
+                    .dropna()
+                    .unique()
+                    .tolist()
+                )
+                if selected_docs:
+                    docs_mask = self.df["CPF/CNPJ"].map(_normalize_doc).isin(selected_docs)
+                    client_mask = client_mask | docs_mask
+
+            mask = mask & client_mask
 
         if periods:
-            mask = mask & (self.df[PERIOD_COLUMN].isin(periods))
+            selected_periods = set()
+            for period in periods:
+                normalized = self._normalize_period_value(period)
+                if normalized:
+                    selected_periods.add(normalized)
+            if not selected_periods:
+                mask = mask & pd.Series(False, index=self.df.index)
+            else:
+                period_series = self.df[PERIOD_COLUMN].map(self._normalize_period_value)
+                mask = mask & period_series.isin(selected_periods)
 
         filtered = self.df[mask].copy()
         logger.info("Filtro aplicado: %d clientes, %d períodos → %d registros.", len(clients), len(periods), len(filtered))

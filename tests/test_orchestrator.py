@@ -5,6 +5,7 @@ Testes para o serviço de orquestração com identificação de agrupamento.
 import pytest
 import zipfile
 import io
+import pandas as pd
 
 from logic.services.orchestrator import Orchestrator
 from logic.core.mapping import (
@@ -81,7 +82,7 @@ class TestAgrupamento:
         # A primeira linha deve ser a Fatura Pai
         parent_row = result.iloc[0]
         assert parent_row[PARENT_ROW_FLAG] == True
-        assert parent_row["No. UC"] == "Fatura Agrupada"
+        assert parent_row["No. UC"] == "Consolidado (Default)"
         
         # A soma de Valor Enviado Emissão deve ser a soma das duas filhas (200 + 180 = 380)
         assert parent_row["Valor Enviado Emissão"] == pytest.approx(380.00)
@@ -265,3 +266,100 @@ class TestIncompleteData:
         
         assert info["registros_incompletos"] == 0
         assert len(info["ucs_afetadas"]) == 0
+
+
+class TestPortalOnlyGeneration:
+    """Testes do filtro portal-first aplicado na geração."""
+
+    def test_generate_mantem_apenas_portal_e_deduplica_uc_referencia(self, sample_base_xlsx, sample_template_xlsx, monkeypatch):
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+
+        source_df = pd.DataFrame({
+            "Referencia": ["01/2026", "01/2026", "01/2026", "01/2026", "01/2026"],
+            "No. UC": ["UC001", "UC001", "UC002", "UC003", "UC004"],
+            "Razao Social": ["Cliente X", "Cliente X", "Cliente X", "Cliente X", "Cliente X"],
+            "Distribuidora": ["CEMIG", "CEMIG", "CEMIG", "CEMIG", "CEMIG"],
+            "Fonte dos Dados": ["Regra de Negócio", "Fatura", "Fatura", "Fatura", "Fatura"],
+            "Número da conta": [pd.NA, "CONTA-1", "CONTA-2", "CONTA-3", "CONTA-4"],
+            "Valor Enviado Emissão": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "Valor_gestao": [111.0, 111.0, 222.0, pd.NA, 0.0],
+            "Tarifa Raizen": [1.0, 1.0, 1.0, 1.0, 1.0],
+            "Custo c/ GD": [1.0, 1.0, 1.0, 1.0, 1.0],
+            "Custo s/ GD": [2.0, 2.0, 2.0, 2.0, 2.0],
+            "Ganho total Padrão": [1.0, 1.0, 1.0, 1.0, 1.0],
+            "CPF/CNPJ": ["1", "1", "1", "1", "1"],
+            "Cred. Consumido Raizen": [1.0, 1.0, 1.0, 1.0, 1.0],
+            "Desconto Contratado": ["10%", "10%", "10%", "10%", "10%"],
+            "Vencimento": ["01-02-2026", "01-02-2026", "01-02-2026", "01-02-2026", "01-02-2026"],
+            "Status Pos-Faturamento": ["Pago", "Pago", "Pago", "Pago", "Pago"],
+        })
+
+        monkeypatch.setattr(orch.reader, "filter_data", lambda *args, **kwargs: source_df.copy())
+
+        captured = {}
+
+        class _FakeWriter:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def generate_bytes(self, data_to_insert, *_args, **_kwargs):
+                captured["df"] = data_to_insert.copy()
+                return b"xlsx-bytes"
+
+        monkeypatch.setattr("logic.services.orchestrator.TemplateExcelWriter", _FakeWriter)
+
+        result = orch.generate(["Cliente X"], ["01/2026"], grouping_mode="none")
+
+        assert result == b"xlsx-bytes"
+        generated_df = captured["df"]
+        # UC003 não existe no portal (Valor_gestao nulo) e UC004 tem valor 0, então saem.
+        assert set(generated_df["No. UC"].dropna().astype(str)) == {"UC001", "UC002"}
+        # UC001 era duplicada e deve ser consolidada em uma linha.
+        assert (generated_df["No. UC"].astype(str) == "UC001").sum() == 1
+        # Valor final vem do portal (Valor_gestao), não do valor técnico.
+        uc001 = generated_df.loc[generated_df["No. UC"].astype(str) == "UC001"].iloc[0]
+        assert uc001["Valor Enviado Emissão"] == pytest.approx(111.0)
+
+    def test_generate_usa_uc_rateio_quando_for_a_chave_do_portal(self, sample_base_xlsx, sample_template_xlsx, monkeypatch):
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+
+        source_df = pd.DataFrame({
+            "Referencia": ["11/2025", "11/2025"],
+            "No. UC": ["TEC-A", "TEC-B"],
+            "UC p Rateio": ["PORTAL-001", "PORTAL-002"],
+            "Razao Social": ["Cliente Y", "Cliente Y"],
+            "Distribuidora": ["CPFL", "CPFL"],
+            "Fonte dos Dados": ["Fatura", "Fatura"],
+            "Número da conta": ["C1", "C2"],
+            "Valor Enviado Emissão": [10.0, 20.0],
+            "Valor_gestao": [123.45, 456.78],
+            "Tarifa Raizen": [1.0, 1.0],
+            "Custo c/ GD": [1.0, 1.0],
+            "Custo s/ GD": [2.0, 2.0],
+            "Ganho total Padrão": [1.0, 1.0],
+            "CPF/CNPJ": ["1", "1"],
+            "Cred. Consumido Raizen": [1.0, 1.0],
+            "Desconto Contratado": ["10%", "10%"],
+            "Vencimento": ["01-12-2025", "01-12-2025"],
+            "Status Pos-Faturamento": ["Pago", "Pago"],
+        })
+
+        monkeypatch.setattr(orch.reader, "filter_data", lambda *args, **kwargs: source_df.copy())
+
+        captured = {}
+
+        class _FakeWriter:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def generate_bytes(self, data_to_insert, *_args, **_kwargs):
+                captured["df"] = data_to_insert.copy()
+                return b"xlsx-bytes"
+
+        monkeypatch.setattr("logic.services.orchestrator.TemplateExcelWriter", _FakeWriter)
+
+        result = orch.generate(["Cliente Y"], ["11/2025"], grouping_mode="none")
+
+        assert result == b"xlsx-bytes"
+        generated_df = captured["df"]
+        assert set(generated_df["No. UC"].dropna().astype(str)) == {"PORTAL-001", "PORTAL-002"}
