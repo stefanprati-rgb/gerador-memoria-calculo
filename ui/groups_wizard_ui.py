@@ -495,10 +495,12 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         if new_tipo != group.tipo_apresentacao:
             set_tipo_apresentacao(group.id, new_tipo)
 
+        sort_options = ["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"]
+        safe_sort_value = current_sort_by if current_sort_by in sort_options else "Economia Gerada (Desc)"
         new_sort = st.selectbox(
             "Ordenação",
-            options=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"],
-            index=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"].index(current_sort_by),
+            options=sort_options,
+            index=sort_options.index(safe_sort_value),
             key=f"wiz_sort_{group.id}",
         )
         if new_sort != current_sort_by:
