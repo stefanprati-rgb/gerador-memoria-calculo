@@ -97,16 +97,19 @@ class WizardViewModel:
         set_custom_group_name(group_id, shortcut_name)
 
         try:
-            profile = enrichment_service.load_mapping(shortcut_name)
-            if profile is not None:
-                val = False
-                if isinstance(profile, dict):
-                    val = profile.get("group_by_distributor", False)
-                elif hasattr(profile, "get"):
-                    res = profile.get("group_by_distributor", False)
-                    if not isinstance(res, (pd.Series, pd.DataFrame)):
-                        val = res
-                set_grouping_mode(group_id, GROUPING_MODE_DISTRIBUTOR if bool(val) else GROUPING_MODE_DEFAULT)
+            # Evita efeitos colaterais no Firestore quando não existe perfil de mapeamento
+            # para o grupo salvo (atalho de clientes).
+            if shortcut_name in enrichment_service.list_profiles():
+                profile = enrichment_service.load_mapping(shortcut_name)
+                if profile is not None:
+                    val = False
+                    if isinstance(profile, dict):
+                        val = profile.get("group_by_distributor", False)
+                    elif hasattr(profile, "get"):
+                        res = profile.get("group_by_distributor", False)
+                        if not isinstance(res, (pd.Series, pd.DataFrame)):
+                            val = res
+                    set_grouping_mode(group_id, GROUPING_MODE_DISTRIBUTOR if bool(val) else GROUPING_MODE_DEFAULT)
         except Exception as e:
             logging.getLogger(__name__).error("Erro ao sincronizar regras de perfil: %s", e)
 

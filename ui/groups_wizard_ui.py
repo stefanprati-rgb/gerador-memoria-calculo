@@ -112,11 +112,19 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
             try:
                 saved_groups = list_client_groups()
                 if saved_groups:
+                    shortcut_key = f"wiz_shortcut_{group.id}"
+                    reset_flag_key = f"{shortcut_key}_reset_pending"
+
+                    # Reset seguro: só atualiza session_state antes de instanciar o widget.
+                    if st.session_state.get(reset_flag_key):
+                        st.session_state[shortcut_key] = "Grupos Salvos"
+                        st.session_state[reset_flag_key] = False
+
                     selected_shortcut = st.selectbox(
                         "Carregar grupo salvo",
                         options=["Grupos Salvos"] + saved_groups,
                         index=0,
-                        key=f"wiz_shortcut_{group.id}",
+                        key=shortcut_key,
                         label_visibility="collapsed"
                     )
                     
@@ -125,7 +133,8 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                         sucesso = WizardViewModel.load_shortcut(group.id, selected_shortcut)
                         if sucesso:
                             st.success(f"'{selected_shortcut}' carregado.")
-                            st.session_state[f"wiz_shortcut_{group.id}"] = "Grupos Salvos"
+                            # Evita erro de mutação tardia do session_state.
+                            st.session_state[reset_flag_key] = True
                             time.sleep(0.5)
                             st.rerun()
             except Exception as e:
@@ -341,7 +350,7 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
             st.rerun()
 
 def _render_step_3_review(group: GroupState, orch: Any) -> None:
-    """Resumo e botão Final de Geração. Esconde engrenagens em 'Avançado'."""
+    """Passo 3 com fluxo simples: revisão, configuração essencial, avançado e geração."""
     current_sort_by = getattr(group, "sort_by", "Economia Gerada (Desc)")
     tipo_apresentacao_label = {
         "Separadores Múltiplos": "Uma aba por agrupamento",
@@ -352,7 +361,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         """
         <div class="wiz-review-hero">
             <h4>3. Revisão e Geração</h4>
-            <p>Esta etapa existe para confirmar o escopo da emissão antes de construir o arquivo. Revise volume, pendências e modo de apresentação.</p>
+            <p>Revise o escopo e ajuste apenas o essencial antes de gerar o arquivo final.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -385,17 +394,11 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         unsafe_allow_html=True,
     )
     output_mode_label = "ZIP por período" if len(group.periods) > 1 else "Excel único"
-    grouping_mode_label = {
-        GROUPING_MODE_DEFAULT: "Agrupamento padrão",
-        GROUPING_MODE_DISTRIBUTOR: "Agrupado por distribuidora",
-        GROUPING_MODE_CNPJ: "Agrupado por CNPJ",
-        GROUPING_MODE_NONE: "Sem agrupamento",
-    }.get(group.grouping_mode, "Agrupamento padrão")
     with st.container(border=True):
         st.markdown(
             """
-            <div class="wiz-panel-title">Resumo da entrega</div>
-            <div class="wiz-panel-copy">Este bloco resume como o arquivo será montado com base nas escolhas abaixo. Ele é apenas informativo.</div>
+            <div class="wiz-panel-title">Resumo rápido</div>
+            <div class="wiz-panel-copy">Visão direta de como o arquivo será entregue.</div>
             """,
             unsafe_allow_html=True,
         )
@@ -403,109 +406,108 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
             f"""
             <div class="wiz-chip-row">
                 <span class="wiz-chip">{output_mode_label}</span>
-                <span class="wiz-chip">{grouping_mode_label}</span>
-                <span class="wiz-chip">{'Com UCs filhas' if group.include_child_rows else 'Sem UCs filhas'}</span>
                 <span class="wiz-chip">{tipo_apresentacao_label}</span>
-                <span class="wiz-chip">{'Com resumo executivo' if group.incluir_resumo else 'Sem resumo executivo'}</span>
+                <span class="wiz-chip">{'Apenas pendentes' if group.somente_pendencias else 'Todos os status'}</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    # --- TRATAMENTO DE INCOMPLETOS (Fim do Data Dump) ---
+    # --- 1) Pendências ---
     incomplete_filter = "all"  # default
-    
-    if metrics.incomplete_count > 0:
-        st.info(f"💡 **{metrics.incomplete_count}** faturas precisam de atenção (vencimento ausente).")
-        
-        col_det, col_mode = st.columns([0.4, 0.6])
-        with col_det:
-            if hasattr(st, "popover"):
-                with st.popover("🔍 Ver Detalhes", width="stretch"):
-                    st.dataframe(metrics.incomplete_details, hide_index=True)
-            else:
-                with st.expander("Ver Detalhes"):
-                    st.dataframe(metrics.incomplete_details, hide_index=True)
-        
-        with col_mode:
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div class="wiz-panel-title">Pendências de cobrança</div>
+            <div class="wiz-panel-copy">Defina se o arquivo deve incluir tudo ou focar apenas em itens completos/pendentes.</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if metrics.incomplete_count > 0:
+            st.warning(f"{metrics.incomplete_count} faturas estão sem vencimento identificado.")
             incomplete_filter = st.selectbox(
-                "Como tratar registros com pendência",
+                "Tratamento das pendências",
                 options=["all", "complete_only", "incomplete_only"],
                 format_func=lambda x: {
-                    "all": "Incluir tudo no arquivo",
-                    "complete_only": "Emitir apenas registros completos",
-                    "incomplete_only": "Emitir apenas itens para revisão"
+                    "all": "Incluir tudo",
+                    "complete_only": "Somente completas",
+                    "incomplete_only": "Somente para revisão"
                 }[x],
                 key="wiz_incomplete_filter"
             )
-    else:
-        st.success("Todas as faturas do escopo atual possuem vencimento identificado.")
-
-    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+            if hasattr(st, "popover"):
+                with st.popover("Ver faturas com pendência", width="stretch"):
+                    st.dataframe(metrics.incomplete_details, hide_index=True)
+            else:
+                with st.expander("Ver faturas com pendência"):
+                    st.dataframe(metrics.incomplete_details, hide_index=True)
+        else:
+            st.success("Nenhuma pendência de vencimento encontrada no escopo atual.")
 
     from ui.state.group_state import (
         set_grouping_mode, set_include_child_rows, set_tipo_apresentacao, set_incluir_resumo, set_somente_pendencias, set_separar_auditoria, set_sort_by
     )
+
+    # --- 2) Configuração Essencial ---
     with st.container(border=True):
         st.markdown(
             """
-            <div class="wiz-panel-title">Organização do arquivo</div>
-            <div class="wiz-panel-copy">Defina como o conteúdo será agrupado e quanto detalhe aparecerá em cada bloco da memória de cálculo.</div>
+            <div class="wiz-panel-title">Configuração essencial</div>
+            <div class="wiz-panel-copy">Ajustes principais que impactam a leitura final do relatório.</div>
             """,
             unsafe_allow_html=True,
         )
-        col_apres1, col_apres2 = st.columns(2)
-        with col_apres1:
-            new_grouping_mode = st.radio(
-                "Critério de agrupamento",
-                options=[
-                    GROUPING_MODE_DEFAULT,
-                    GROUPING_MODE_DISTRIBUTOR,
-                    GROUPING_MODE_CNPJ,
-                    GROUPING_MODE_NONE,
-                ],
-                format_func=lambda x: {
-                    GROUPING_MODE_DEFAULT: "Agrupamento Padrão",
-                    GROUPING_MODE_DISTRIBUTOR: "Agrupar por Distribuidora",
-                    GROUPING_MODE_CNPJ: "Agrupar por CNPJ",
-                    GROUPING_MODE_NONE: "Sem agrupamento",
-                }[x],
-                index=[
-                    GROUPING_MODE_DEFAULT,
-                    GROUPING_MODE_DISTRIBUTOR,
-                    GROUPING_MODE_CNPJ,
-                    GROUPING_MODE_NONE,
-                ].index(group.grouping_mode),
-                key=f"wiz_grouping_mode_{group.id}",
-            )
-            if new_grouping_mode != group.grouping_mode:
-                set_grouping_mode(group.id, new_grouping_mode)
+        new_grouping_mode = st.radio(
+            "Agrupamento",
+            options=[
+                GROUPING_MODE_DEFAULT,
+                GROUPING_MODE_DISTRIBUTOR,
+                GROUPING_MODE_CNPJ,
+                GROUPING_MODE_NONE,
+            ],
+            format_func=lambda x: {
+                GROUPING_MODE_DEFAULT: "Padrão",
+                GROUPING_MODE_DISTRIBUTOR: "Por distribuidora",
+                GROUPING_MODE_CNPJ: "Por CNPJ",
+                GROUPING_MODE_NONE: "Sem agrupamento",
+            }[x],
+            index=[
+                GROUPING_MODE_DEFAULT,
+                GROUPING_MODE_DISTRIBUTOR,
+                GROUPING_MODE_CNPJ,
+                GROUPING_MODE_NONE,
+            ].index(group.grouping_mode),
+            key=f"wiz_grouping_mode_{group.id}",
+        )
+        if new_grouping_mode != group.grouping_mode:
+            set_grouping_mode(group.id, new_grouping_mode)
 
-            new_tipo = st.radio(
-                "Como organizar as abas do Excel",
-                options=["Separadores Múltiplos", "Tabela Única"],
-                format_func=lambda x: {
-                    "Separadores Múltiplos": "Uma aba por agrupamento (mais organizado para navegação)",
-                    "Tabela Única": "Tudo em uma aba (mais simples para filtro e exportação)",
-                }[x],
-                index=0 if group.tipo_apresentacao == "Separadores Múltiplos" else 1,
-                key=f"wiz_tipo_apres_{group.id}",
-                help="Escolha entre separar o conteúdo em abas ou consolidar tudo em uma única planilha."
-            )
-            if new_tipo != group.tipo_apresentacao:
-                set_tipo_apresentacao(group.id, new_tipo)
+        new_tipo = st.radio(
+            "Estrutura das abas",
+            options=["Separadores Múltiplos", "Tabela Única"],
+            format_func=lambda x: {
+                "Separadores Múltiplos": "Uma aba por agrupamento",
+                "Tabela Única": "Tudo em uma aba",
+            }[x],
+            index=0 if group.tipo_apresentacao == "Separadores Múltiplos" else 1,
+            key=f"wiz_tipo_apres_{group.id}",
+        )
+        if new_tipo != group.tipo_apresentacao:
+            set_tipo_apresentacao(group.id, new_tipo)
 
-            new_sort = st.selectbox(
-                "Ordenar resultados por",
-                options=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"],
-                index=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"].index(current_sort_by),
-                key=f"wiz_sort_{group.id}",
-                help="Define a ordem das faturas dentro de cada bloco ou aba."
-            )
-            if new_sort != current_sort_by:
-                set_sort_by(group.id, new_sort)
+        new_sort = st.selectbox(
+            "Ordenação",
+            options=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"],
+            index=["Economia Gerada (Desc)", "Razão Social", "Instalação (UC)"].index(current_sort_by),
+            key=f"wiz_sort_{group.id}",
+        )
+        if new_sort != current_sort_by:
+            set_sort_by(group.id, new_sort)
 
-        with col_apres2:
+    # --- 3) Configuração Avançada ---
+    with st.expander("⚙️ Configuração avançada", expanded=False):
+        col_adv_1, col_adv_2 = st.columns(2)
+        with col_adv_1:
             new_include_child_rows = st.checkbox(
                 "Incluir UCs filhas",
                 value=group.include_child_rows,
@@ -518,6 +520,16 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
             elif group.grouping_mode != GROUPING_MODE_NONE and new_include_child_rows != group.include_child_rows:
                 set_include_child_rows(group.id, new_include_child_rows)
 
+            new_auditoria = st.checkbox(
+                "Separar abas de auditoria",
+                value=group.separar_auditoria,
+                key=f"wiz_auditoria_{group.id}",
+                help="Itens de auditoria ficam em abas 'Aud - ...' separadas das abas financeiras."
+            )
+            if new_auditoria != group.separar_auditoria:
+                set_separar_auditoria(group.id, new_auditoria)
+
+        with col_adv_2:
             new_resumo = st.checkbox(
                 "Incluir Resumo Executivo",
                 value=group.incluir_resumo,
@@ -534,21 +546,12 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
             if new_pendencias != group.somente_pendencias:
                 set_somente_pendencias(group.id, new_pendencias)
 
-            new_auditoria = st.checkbox(
-                "Criar abas separadas para itens de auditoria",
-                value=group.separar_auditoria,
-                key=f"wiz_auditoria_{group.id}",
-                help="Quando ativo, itens de auditoria ficam em abas 'Aud - ...' separadas das abas financeiras."
-            )
-            if new_auditoria != group.separar_auditoria:
-                set_separar_auditoria(group.id, new_auditoria)
-
     # --- BOTÃO PRINCIPAL (O Caminho Feliz) ---
     with st.container(border=True):
         st.markdown(
             """
             <div class="wiz-panel-title">Geração final</div>
-            <div class="wiz-panel-copy">Se o escopo estiver correto, prepare o arquivo para download. O arquivo final é liberado no mesmo passo, sem navegação extra.</div>
+            <div class="wiz-panel-copy">Se estiver tudo certo, gere e baixe o arquivo nesta mesma etapa.</div>
             """,
             unsafe_allow_html=True,
         )
@@ -635,15 +638,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
         else:
             st.error("Nenhum arquivo foi gerado para o escopo atual. Revise clientes, períodos e filtros aplicados.")
 
-    # --- OPÇÕES AVANÇADAS (As Engrenagens Escondidas) ---
-    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-    with st.expander("⚙️ Opções Avançadas"):
-        st.markdown("<p style='font-size: 0.85rem; color: #666;'>Configurações técnicas para usuários experientes.</p>", unsafe_allow_html=True)
-        
-        # Enriquecimento (automático — informativo)
-        st.markdown("**Enriquecimento:** Aplicado automaticamente a partir de todos os perfis cadastrados na aba de Metadados.")
-        
-        st.checkbox("Habilitar modo de depuração (Logs detalhados)", value=False)
+    # Informação técnica (somente leitura)
+    st.caption("Enriquecimento de metadados: aplicado automaticamente a partir dos perfis cadastrados.")
 
     # Footer de Navegação
     st.divider()
