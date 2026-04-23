@@ -8,14 +8,12 @@ import json
 import pandas as pd
 import logging
 from typing import List, Optional, Union, Dict
-from datetime import datetime
 from logic.core.mapping import ENRICHMENT_KEY
 
 logger = logging.getLogger(__name__)
 
 # --- CONFIGURAÇÃO FIREBASE ---
 COLLECTION_NAME = "uc_mappings"
-PROFILES_COLLECTION = "profiles"
 COLLECTION_ENRICHMENT = "uc_enrichment"
 _adapter = None
 
@@ -93,22 +91,7 @@ def load_mapping(profile_name: str) -> Union[pd.DataFrame, Dict, None]:
             doc = doc_ref.get()
             if doc.exists:
                 return _dict_to_df(doc.to_dict())
-            else:
-                 logger.info("Perfil '%s' não encontrado. Criando perfil padrão no Firestore para inicialização.", profile_name)
-                 
-                 # Configurações padrão sugeridas
-                 default_profile = {
-                     "name": profile_name,
-                     "group_by_distributor": True,
-                     "active": True,
-                     "updated_at": datetime.now()
-                 }
-                 
-                 # Salvar na coleção de perfis (Bootstrap automático)
-                 db.collection(PROFILES_COLLECTION).document(profile_name).set(default_profile)
-                 
-                 # Retornar o objeto recém-criado para uso imediato
-                 return default_profile
+            logger.info("Perfil '%s' não encontrado no Firestore.", profile_name)
         else:
              firestore_failed = True
     except Exception as e:

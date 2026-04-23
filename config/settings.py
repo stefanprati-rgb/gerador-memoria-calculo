@@ -38,6 +38,31 @@ class Settings(BaseSettings):
         """Retorna o caminho de rede configurado. Não tenta adivinhar pastas do usuário Windows."""
         return self.network_balanco_path_override
 
+    def _has_firebase_credentials_source(self) -> bool:
+        """
+        Verifica se existe alguma fonte de credencial Firebase disponível:
+        1) caminho local configurado e existente
+        2) secrets do Streamlit (firebase / firebase_credentials)
+        """
+        # 1) Arquivo local
+        if self.firebase_credentials_path:
+            try:
+                abs_path = os.path.abspath(self.firebase_credentials_path)
+                if os.path.exists(abs_path):
+                    return True
+            except Exception:
+                pass
+
+        # 2) Streamlit secrets (produção cloud)
+        try:
+            import streamlit as st
+            if "firebase" in st.secrets or "firebase_credentials" in st.secrets:
+                return True
+        except Exception:
+            pass
+
+        return False
+
     def validate_for_runtime(self, mode: str = "production") -> Dict[str, bool]:
         """
         Valida a consistência das configurações baseado no modo de execução.
@@ -59,10 +84,15 @@ class Settings(BaseSettings):
             status["admin_secure"] = False
 
         # 2. Validação Firebase
-        if not self.firebase_storage_bucket or not self.firebase_credentials_path:
+        firebase_has_bucket = bool(self.firebase_storage_bucket)
+        firebase_has_credentials = self._has_firebase_credentials_source()
+        if not firebase_has_bucket or not firebase_has_credentials:
             status["firebase_ready"] = False
             if mode == "production":
-                raise ConfigurationError("FIREBASE_STORAGE_BUCKET e FIREBASE_CREDENTIALS_PATH são obrigatórios no modo produção.")
+                raise ConfigurationError(
+                    "FIREBASE_STORAGE_BUCKET e uma credencial Firebase válida "
+                    "(arquivo local ou st.secrets) são obrigatórios no modo produção."
+                )
 
         # 3. Caminho de Rede
         if self.network_balanco_path and os.path.exists(self.network_balanco_path):
