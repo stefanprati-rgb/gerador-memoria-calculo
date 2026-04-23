@@ -1,4 +1,5 @@
 import sys
+import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -8,7 +9,6 @@ sys.modules["firebase_admin"] = MagicMock()
 sys.modules["firebase_admin.credentials"] = MagicMock()
 sys.modules["firebase_admin.storage"] = MagicMock()
 sys.modules["firebase_admin.firestore"] = MagicMock()
-
 
 class FakeOrchestrator:
     def __init__(self, *args, **kwargs):
@@ -22,7 +22,15 @@ class FakeOrchestrator:
         return ["Cliente A", "Cliente B"]
 
 
-def test_app_default_opens_wizard(monkeypatch, tmp_path):
+def _build_local_cache_file() -> Path:
+    runtime_dir = Path("tests") / ".runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = runtime_dir / f"base_consolidada_{uuid.uuid4().hex}.parquet"
+    cache_file.write_bytes(b"cache")
+    return cache_file
+
+
+def test_app_default_opens_wizard(monkeypatch):
     import config.settings as settings_module
     import logic.services.sync_service as sync_service
     import logic.services.orchestrator as orchestrator_module
@@ -30,8 +38,7 @@ def test_app_default_opens_wizard(monkeypatch, tmp_path):
     import ui.groups_wizard_ui as wizard_ui
     import ui.sidebar as sidebar_ui
 
-    fake_cache = tmp_path / "base_consolidada.parquet"
-    fake_cache.write_bytes(b"cache")
+    fake_cache = _build_local_cache_file()
 
     monkeypatch.setattr(sync_service, "PARQUET_FILE", str(fake_cache))
     monkeypatch.setattr(sync_service, "get_cache_update_time", lambda: "21/04/2026 às 23:00")
@@ -51,7 +58,7 @@ def test_app_default_opens_wizard(monkeypatch, tmp_path):
     assert at.sidebar.radio[0].value == "Gerador de Memória"
 
 
-def test_app_switches_modules(monkeypatch, tmp_path):
+def test_app_switches_modules(monkeypatch):
     import config.settings as settings_module
     import logic.services.sync_service as sync_service
     import logic.services.orchestrator as orchestrator_module
@@ -60,8 +67,7 @@ def test_app_switches_modules(monkeypatch, tmp_path):
     import ui.enrichment_ui as enrichment_ui
     import ui.sidebar as sidebar_ui
 
-    fake_cache = tmp_path / "base_consolidada.parquet"
-    fake_cache.write_bytes(b"cache")
+    fake_cache = _build_local_cache_file()
 
     monkeypatch.setattr(sync_service, "PARQUET_FILE", str(fake_cache))
     monkeypatch.setattr(sync_service, "get_cache_update_time", lambda: "21/04/2026 às 23:00")
