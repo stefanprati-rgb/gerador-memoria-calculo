@@ -429,9 +429,9 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 "Tratamento das pendências",
                 options=["all", "complete_only", "incomplete_only"],
                 format_func=lambda x: {
-                    "all": "Incluir tudo",
-                    "complete_only": "Somente completas",
-                    "incomplete_only": "Somente para revisão"
+                    "all": "Manter todas as faturas",
+                    "complete_only": "Apenas com vencimento",
+                    "incomplete_only": "Apenas sem vencimento"
                 }[x],
                 key="wiz_incomplete_filter"
             )
@@ -539,7 +539,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 set_incluir_resumo(group.id, new_resumo)
 
             new_pendencias = st.checkbox(
-                "Mostrar apenas faturas pendentes",
+                "Ocultar faturas pagas",
                 value=group.somente_pendencias,
                 key=f"wiz_pendencias_{group.id}"
             )
