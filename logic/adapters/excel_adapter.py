@@ -174,7 +174,22 @@ class BaseExcelReader:
             .dropna()
             .map(self._normalize_period_value)
         )
-        valid_periods = sorted({p for p in normalized_periods if p})
+
+        def _period_sort_key(period: str) -> tuple[int, int, str]:
+            # Ordenação cronológica real (ano -> mês), com fallback lexical.
+            # Aceita MM/YYYY ou MM-YYYY.
+            try:
+                normalized = str(period).strip().replace("-", "/")
+                month_str, year_str = normalized.split("/")
+                month = int(month_str)
+                year = int(year_str)
+                if 1 <= month <= 12:
+                    return (year, month, str(period))
+            except Exception:
+                pass
+            return (9999, 99, str(period))
+
+        valid_periods = sorted({p for p in normalized_periods if p}, key=_period_sort_key)
         return valid_periods
 
     def filter_data(self, clients: List[str], periods: List[str]) -> pd.DataFrame:

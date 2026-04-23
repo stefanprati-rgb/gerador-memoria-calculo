@@ -79,6 +79,20 @@ class TestBaseExcelReader:
         assert len(periods) == 2  # jan e fev
         assert periods == ["01/2026", "02/2026"]
 
+    def test_get_periods_ordena_cronologico_multi_ano(self):
+        """Deve ordenar por ano/mês quando houver períodos de anos diferentes."""
+        reader = BaseExcelReader.__new__(BaseExcelReader)
+        reader.sheet_name = "Balanco Operacional"
+        reader.df = pd.DataFrame(
+            {
+                "Referencia": ["01/2026", "02/2026", "10/2025", "11/2025", "12/2025"],
+            }
+        )
+
+        periods = reader.get_periods()
+
+        assert periods == ["10/2025", "11/2025", "12/2025", "01/2026", "02/2026"]
+
     def test_filter_data_clientes(self, sample_base_xlsx):
         """Deve filtrar corretamente por cliente."""
         reader = BaseExcelReader(sample_base_xlsx)
