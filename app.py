@@ -1,17 +1,24 @@
 import streamlit as st
 import os
 import glob
-from config.settings import settings
-from logic.core.logging_config import setup_logging
-from logic.services.orchestrator import Orchestrator
-from logic.adapters.excel_adapter import ColumnValidationError, HeaderNotFoundError
-from logic.services.sync_service import PARQUET_FILE, get_cache_update_time
 
-from ui.styles import inject_styles
-from ui.header import render_header
-from ui.sidebar import render_sidebar_metrics
-from ui.groups_wizard_ui import render_groups_section_wizard
-from ui.admin import render_admin_panel
+try:
+    from config.settings import settings
+    from logic.core.logging_config import setup_logging
+    from logic.services.orchestrator import Orchestrator
+    from logic.adapters.excel_adapter import ColumnValidationError, HeaderNotFoundError
+    from logic.services.sync_service import PARQUET_FILE, get_cache_update_time
+
+    from ui.styles import inject_styles
+    from ui.header import render_header
+    from ui.sidebar import render_sidebar_metrics
+    from ui.groups_wizard_ui import render_groups_section_wizard
+    from ui.admin import render_admin_panel
+except Exception as import_err:
+    st.set_page_config(page_title="Memória de Cálculo - Gerador", layout="wide")
+    st.error("Falha ao inicializar módulos da aplicação. Tente atualizar a página em alguns segundos.")
+    st.caption(f"Detalhe técnico: {import_err}")
+    st.stop()
 
 # Inicializar logging
 setup_logging(settings.log_level)
