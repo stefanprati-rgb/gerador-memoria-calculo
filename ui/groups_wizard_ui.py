@@ -451,7 +451,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
             st.success("Nenhuma pendência de vencimento encontrada no escopo atual.")
 
     from ui.state.group_state import (
-        set_grouping_mode, set_include_child_rows, set_tipo_apresentacao, set_incluir_resumo, set_somente_pendencias, set_separar_auditoria, set_sort_by
+        set_grouping_mode, set_include_child_rows, set_tipo_apresentacao, set_incluir_resumo, set_somente_pendencias, set_sort_by
     )
 
     # --- 2) Configuração Essencial ---
@@ -514,6 +514,8 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
 
     # --- 3) Configuração Avançada ---
     with st.expander("⚙️ Configuração avançada", expanded=False):
+        # Recurso ocultado temporariamente: não separar abas técnicas na geração.
+        group.separar_auditoria = False
         col_adv_1, col_adv_2 = st.columns(2)
         with col_adv_1:
             new_include_child_rows = st.checkbox(
@@ -527,15 +529,6 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 set_include_child_rows(group.id, False)
             elif group.grouping_mode != GROUPING_MODE_NONE and new_include_child_rows != group.include_child_rows:
                 set_include_child_rows(group.id, new_include_child_rows)
-
-            new_auditoria = st.checkbox(
-                "Separar abas de auditoria",
-                value=group.separar_auditoria,
-                key=f"wiz_auditoria_{group.id}",
-                help="Itens de auditoria ficam em abas 'Aud - ...' separadas das abas financeiras."
-            )
-            if new_auditoria != group.separar_auditoria:
-                set_separar_auditoria(group.id, new_auditoria)
 
         with col_adv_2:
             new_resumo = st.checkbox(

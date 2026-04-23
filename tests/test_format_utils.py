@@ -42,3 +42,21 @@ def test_build_scope_base_name_para_multiplos_clientes():
 def test_build_zip_entry_filename():
     entry = build_zip_entry_filename("Grupo_1", ["EMBRACON ADM", "DELCI"], "01/2026")
     assert entry == "EMBRACON_ADM_e_outros_jan_2026.xlsx"
+
+
+def test_generate_suggested_filename_nao_duplica_sufixo_de_periodo():
+    name = generate_suggested_filename(
+        "Fortbras_nov_2025_nov_dez_2025",
+        ["FORTBRAS"],
+        ["11/2025", "12/2025", "01/2026", "02/2026"],
+    )
+    assert name == "Fortbras_nov_dez_2025_jan_fev_2026"
+
+
+def test_build_zip_entry_filename_remove_periodo_do_nome_base():
+    entry = build_zip_entry_filename(
+        "Fortbras_nov_dez_2025_jan_fev_2026",
+        ["FORTBRAS"],
+        "12/2025",
+    )
+    assert entry == "Fortbras_dez_2025.xlsx"

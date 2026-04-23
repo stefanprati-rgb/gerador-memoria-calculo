@@ -17,7 +17,7 @@ class GroupState:
     somente_pendencias: bool = False
     tipo_apresentacao: str = "Separadores Múltiplos"
     incluir_resumo: bool = True
-    separar_auditoria: bool = True
+    separar_auditoria: bool = False
     sort_by: str = "Economia Gerada (Desc)"
 
 
@@ -37,8 +37,8 @@ def _normalize_group_state(group: GroupState) -> None:
         group.tipo_apresentacao = "Separadores Múltiplos"
     if not hasattr(group, "incluir_resumo"):
         group.incluir_resumo = True
-    if not hasattr(group, "separar_auditoria"):
-        group.separar_auditoria = True
+    # Recurso ocultado temporariamente: manter desligado para todos os grupos.
+    group.separar_auditoria = False
     if not hasattr(group, "sort_by"):
         group.sort_by = "Economia Gerada (Desc)"
 

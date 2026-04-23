@@ -508,7 +508,8 @@ class TemplateExcelWriter:
                 except: return 0.0
 
             eco_total = raw_rows["Ganho total Padrão"].apply(_parse_num).sum() if "Ganho total Padrão" in raw_rows.columns else 0.0
-            fat_total = raw_rows["Tarifa Raizen"].apply(_parse_num).sum() if "Tarifa Raizen" in raw_rows.columns else 0.0
+            # Total de faturamento deve usar valor monetário da fatura, não tarifa unitária.
+            fat_total = raw_rows["Valor Enviado Emissão"].apply(_parse_num).sum() if "Valor Enviado Emissão" in raw_rows.columns else 0.0
 
             resumo_ws.append(["Soma da Economia Gerada (R$):", eco_total])
             resumo_ws.append(["Soma da Fatura Raízen (R$):", fat_total])

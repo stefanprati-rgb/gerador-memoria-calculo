@@ -9,6 +9,7 @@ _MONTH_ABBR = {
     5: "mai", 6: "jun", 7: "jul", 8: "ago",
     9: "set", 10: "out", 11: "nov", 12: "dez",
 }
+_MONTH_ABBR_SET = set(_MONTH_ABBR.values())
 
 def safe_key(text: str) -> str:
     """Gera uma chave segura para o Streamlit baseada em hash MD5."""
@@ -114,13 +115,50 @@ def format_periods_for_filename(periods: list) -> str:
 
     return "_".join(parts)
 
+def _strip_trailing_period_signature(name: str) -> str:
+    """
+    Remove sufixos de período já embutidos no final do nome.
+    Ex.:
+    - Fortbras_nov_2025 -> Fortbras
+    - Fortbras_nov_dez_2025_jan_fev_2026 -> Fortbras
+    """
+    safe = sanitize_filename(name)
+    tokens = [t for t in safe.split("_") if t]
+    if not tokens:
+        return safe
+
+    i = len(tokens) - 1
+    consumed_any = False
+
+    while i >= 0:
+        tok = tokens[i]
+        if re.fullmatch(r"\d{4}", tok):
+            j = i - 1
+            month_count = 0
+            while j >= 0 and tokens[j].lower() in _MONTH_ABBR_SET:
+                month_count += 1
+                j -= 1
+
+            if month_count >= 1:
+                consumed_any = True
+                i = j
+                continue
+        break
+
+    if consumed_any:
+        stripped = "_".join(tokens[: i + 1]).strip("_")
+        if stripped:
+            return stripped
+
+    return safe
+
 def build_scope_base_name(name: str, clients: list) -> str:
     """
     Define a base textual do arquivo a partir do contexto do grupo.
     Não inclui período nem timestamp.
     """
     if name and not name.startswith("Grupo_"):
-        base = name
+        base = _strip_trailing_period_signature(name)
     elif len(clients) == 1:
         base = clients[0]
     elif len(clients) > 1:
