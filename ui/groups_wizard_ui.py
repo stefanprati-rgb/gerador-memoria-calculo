@@ -114,6 +114,7 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                 if saved_groups:
                     shortcut_key = f"wiz_shortcut_{group.id}"
                     reset_flag_key = f"{shortcut_key}_reset_pending"
+                    applied_shortcut_key = f"{shortcut_key}_applied"
 
                     # Reset seguro: só atualiza session_state antes de instanciar o widget.
                     if st.session_state.get(reset_flag_key):
@@ -127,11 +128,14 @@ def _render_step_1_clients(group: GroupState, available_clients: List[str]) -> N
                         key=shortcut_key,
                         label_visibility="collapsed"
                     )
-                    
-                    if selected_shortcut != "Grupos Salvos":
+
+                    if selected_shortcut == "Grupos Salvos":
+                        st.session_state[applied_shortcut_key] = None
+                    elif st.session_state.get(applied_shortcut_key) != selected_shortcut:
                         from ui.viewmodels.wizard_viewmodel import WizardViewModel
                         sucesso = WizardViewModel.load_shortcut(group.id, selected_shortcut)
                         if sucesso:
+                            st.session_state[applied_shortcut_key] = selected_shortcut
                             st.success(f"'{selected_shortcut}' carregado.")
                             # Evita erro de mutação tardia do session_state.
                             st.session_state[reset_flag_key] = True
