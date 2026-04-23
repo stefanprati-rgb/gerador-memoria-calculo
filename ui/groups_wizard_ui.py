@@ -12,7 +12,13 @@ from ui.state.group_state import (
     select_clients, update_group_periods, get_active_group
 )
 from ui.utils.search_utils import build_search_index, filter_values
-from ui.utils.format_utils import format_period_label, safe_key, sanitize_filename, generate_suggested_filename
+from ui.utils.format_utils import (
+    format_period_label,
+    build_zip_entry_filename,
+    safe_key,
+    sanitize_filename,
+    generate_suggested_filename,
+)
 from logic.services import enrichment_service
 from logic.services.client_group_service import save_client_group, list_client_groups
 from logic.core.mapping import (
@@ -566,7 +572,6 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
                     for period in payload.periods:
-                        period_label = format_period_label(period).replace("/", "_")
                         period_excel = orch.generate(
                             payload.clients,
                             [period],
@@ -581,7 +586,7 @@ def _render_step_3_review(group: GroupState, orch: Any) -> None:
                             sort_by=payload.sort_by
                         )
                         if period_excel:
-                            f_name = f"{sanitize_filename(group.name)}_{period_label}.xlsx"
+                            f_name = build_zip_entry_filename(group.name, payload.clients, period)
                             z.writestr(f_name, period_excel)
                 
                 final_data = zip_buffer.getvalue()

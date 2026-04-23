@@ -217,6 +217,21 @@ class TestGenerateMultiple:
         result = orch.generate_multiple(groups)
         assert result is None
 
+    def test_generate_multiple_nome_generico_vira_nome_inteligente(self, sample_base_xlsx, sample_template_xlsx):
+        """Quando o grupo é genérico (Grupo_N), o arquivo no ZIP deve usar base do cliente e período."""
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+
+        groups = [
+            {"name": "Grupo_1", "clients": ["Cliente Alpha"], "periods": ["01/2026", "02/2026"]},
+        ]
+
+        result = orch.generate_multiple(groups)
+        assert result is not None
+
+        with zipfile.ZipFile(io.BytesIO(result)) as zf:
+            names = zf.namelist()
+            assert "Cliente_Alpha_jan_fev_2026.xlsx" in names
+
 
 class TestIncompleteData:
     """Testes para identificação de faturas sem correspondência na gestão."""

@@ -1,4 +1,5 @@
 import pytest
+import re
 from unittest.mock import MagicMock
 from ui.viewmodels.wizard_viewmodel import WizardViewModel, GenerationPayload
 from ui.state.group_state import GroupState
@@ -34,7 +35,7 @@ def test_wizard_viewmodel_payload_single():
     payload = vm.prepare_generation_payload(group, "all", None)
     
     assert payload.is_multiplexed is False
-    assert payload.filename == "Projeto_Alpha.xlsx"
+    assert re.match(r"^Projeto_Alpha_\d{4}-\d{2}-\d{2}_\d{4}\.xlsx$", payload.filename)
     assert "spreadsheetml.sheet" in payload.mime_type
     assert payload.clients == ["CLI_A"]
     assert payload.periods == ["01/2024"]
@@ -47,7 +48,7 @@ def test_wizard_viewmodel_payload_multiplexed():
     payload = vm.prepare_generation_payload(group, "complete_only", None)
     
     assert payload.is_multiplexed is True
-    assert payload.filename == "Projeto_Alpha.zip"
+    assert re.match(r"^Projeto_Alpha_\d{4}-\d{2}-\d{2}_\d{4}\.zip$", payload.filename)
     assert "zip" in payload.mime_type
     assert payload.incomplete_filter == "complete_only"
 

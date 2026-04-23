@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Any, Optional
-from ui.utils.format_utils import sanitize_filename
+from ui.utils.format_utils import sanitize_filename, build_runtime_filename
 
 @dataclass
 class WizardReviewMetrics:
@@ -56,10 +56,10 @@ class WizardViewModel:
         safe_name = sanitize_filename(group.name)
         
         if is_multiplexed:
-            filename = f"{safe_name}.zip"
+            filename = build_runtime_filename(safe_name, ".zip")
             mime_type = "application/zip"
         else:
-            filename = f"{safe_name}.xlsx"
+            filename = build_runtime_filename(safe_name, ".xlsx")
             mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
         return GenerationPayload(

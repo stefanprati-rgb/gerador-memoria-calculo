@@ -30,8 +30,10 @@ from logic.core.mapping import (
     GROUPING_MODE_NONE,
 )
 from logic.core.cleaning import enforce_payment_rules
+from logic.core.dates import parse_reference_period
 import pandas as pd
 from typing import Any, List, Optional, Dict
+import re
 
 import logging
 
@@ -75,6 +77,61 @@ def _contains_letter(value: Any) -> bool:
     if pd.isna(value):
         return False
     return any(ch.isalpha() for ch in str(value))
+
+
+_MONTH_ABBR = {
+    1: "jan", 2: "fev", 3: "mar", 4: "abr",
+    5: "mai", 6: "jun", 7: "jul", 8: "ago",
+    9: "set", 10: "out", 11: "nov", 12: "dez",
+}
+
+
+def _sanitize_filename(name: Any) -> str:
+    if name is None:
+        return "arquivo"
+    safe = re.sub(r"[^a-zA-Z0-9_\-]", "_", str(name))
+    safe = re.sub(r"_+", "_", safe).strip("_")
+    return safe or "arquivo"
+
+
+def _is_generic_group_name(name: str) -> bool:
+    return bool(re.match(r"^Grupo_\d+$", str(name).strip()))
+
+
+def _format_periods_for_name(periods: List[Any]) -> str:
+    parsed = []
+    for raw in periods or []:
+        norm = parse_reference_period(raw)  # MM-YYYY
+        if not norm:
+            continue
+        try:
+            month_str, year_str = norm.split("-")
+            month = int(month_str)
+            year = int(year_str)
+            if 1 <= month <= 12:
+                parsed.append((year, month))
+        except Exception:
+            continue
+
+    if not parsed:
+        return ""
+
+    parsed = sorted(set(parsed))
+    grouped: Dict[int, List[int]] = {}
+    for year, month in parsed:
+        grouped.setdefault(year, [])
+        if month not in grouped[year]:
+            grouped[year].append(month)
+
+    parts = []
+    for year in sorted(grouped.keys()):
+        month_part = "_".join(_MONTH_ABBR[m] for m in grouped[year])
+        if len(grouped) == 1:
+            parts.append(f"{month_part}_{year}")
+        else:
+            parts.append(f"{month_part}_{year}")
+
+    return "_".join(parts)
 
 
 class Orchestrator:
@@ -443,8 +500,28 @@ class Orchestrator:
             for group in groups:
                 excel_bytes = self.generate(group.get('clients', []), group.get('periods', []), incomplete_filter=incomplete_filter, grouping_mode=grouping_mode, include_child_rows=include_child_rows, enrichment_df=enrichment_df, somente_pendencias=somente_pendencias, tipo_apresentacao=tipo_apresentacao, incluir_resumo=incluir_resumo, separar_auditoria=separar_auditoria, sort_by=sort_by)
                 if excel_bytes:
-                    name = group.get('name', 'Sem_Nome')
-                    zip_file.writestr(name if name.endswith(".xlsx") else f"{name}.xlsx", excel_bytes)
+                    raw_name = str(group.get('name', 'Sem_Nome') or 'Sem_Nome')
+                    clients = group.get('clients', []) or []
+                    periods = group.get('periods', []) or []
+
+                    if _is_generic_group_name(raw_name):
+                        if len(clients) == 1:
+                            base = clients[0]
+                        elif len(clients) > 1:
+                            base = f"{clients[0]}_e_outros"
+                        else:
+                            base = raw_name
+                        base = _sanitize_filename(base)
+                        period_part = _format_periods_for_name(periods)
+                        if period_part:
+                            file_name = f"{base}_{period_part}.xlsx"
+                        else:
+                            file_name = f"{base}.xlsx"
+                    else:
+                        # Nome manual/custom permanece como informado (apenas sanitização).
+                        file_name = f"{_sanitize_filename(raw_name)}.xlsx"
+
+                    zip_file.writestr(file_name, excel_bytes)
                     generated_count += 1
         return zip_buffer.getvalue() if generated_count > 0 else None
 
