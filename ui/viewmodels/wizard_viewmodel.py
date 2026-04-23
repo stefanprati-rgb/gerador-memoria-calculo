@@ -83,7 +83,7 @@ class WizardViewModel:
     def load_shortcut(group_id: int, shortcut_name: str) -> bool:
         """Carrega clientes e configurações de um grupo salvo e sincroniza com o GroupState."""
         from logic.services.client_group_service import get_clients_from_group
-        from ui.state.group_state import select_clients, set_custom_group_name, set_grouping_mode
+        from ui.state.group_state import select_clients, update_group_name, set_grouping_mode, get_group
         from logic.services import enrichment_service
         from logic.core.mapping import GROUPING_MODE_DEFAULT, GROUPING_MODE_DISTRIBUTOR
         import pandas as pd
@@ -94,7 +94,11 @@ class WizardViewModel:
             return False
 
         select_clients(group_id, clients)
-        set_custom_group_name(group_id, shortcut_name)
+        # Atalho deve manter nome dinâmico no passo 2 (base + períodos).
+        update_group_name(group_id, shortcut_name)
+        group = get_group(group_id)
+        if group:
+            group.is_auto_name = True
 
         try:
             # Evita efeitos colaterais no Firestore quando não existe perfil de mapeamento

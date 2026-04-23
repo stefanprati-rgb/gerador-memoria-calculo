@@ -325,10 +325,16 @@ def _render_step_2_periods(group: GroupState, available_periods: List[str]) -> N
             """,
             unsafe_allow_html=True,
         )
+        name_key = f"wiz_name_{group.id}"
+        # Mantém o campo sincronizado com o nome automático ao alterar períodos.
+        if group.is_auto_name:
+            st.session_state[name_key] = group.name
+        elif name_key not in st.session_state:
+            st.session_state[name_key] = group.name
+
         new_name = st.text_input(
             "Nome do Arquivo Final",
-            value=group.name,
-            key=f"wiz_name_{group.id}",
+            key=name_key,
             placeholder="Ex: Memória de Cálculo Abril 2024",
             help="Este será o nome do arquivo .xlsx gerado."
         )
