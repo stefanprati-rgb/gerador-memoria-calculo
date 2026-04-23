@@ -84,7 +84,7 @@ class WizardViewModel:
         """Carrega clientes e configurações de um grupo salvo e sincroniza com o GroupState."""
         from logic.services.client_group_service import get_clients_from_group
         from ui.state.group_state import select_clients, set_custom_group_name, set_grouping_mode
-        from logic.services.enrichment_service import enrichment_service
+        from logic.services import enrichment_service
         from logic.core.mapping import GROUPING_MODE_DEFAULT, GROUPING_MODE_DISTRIBUTOR
         import pandas as pd
         import logging
