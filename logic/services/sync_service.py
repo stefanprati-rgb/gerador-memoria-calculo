@@ -311,6 +311,13 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
 
             df_gestao_for_merge = df_gestao.rename(columns={merge_right_uc_key: left_merge_uc_col}).copy()
 
+            # Dropar colunas de identidade que já existem no Balanço para
+            # evitar conflitos de sufixo _x/_y no merge.  Mantemos no
+            # df_gestao original para uso posterior (portal-only rows).
+            _identity_overlap = [c for c in [dist_col, nome_col, doc_col] if c and c in df_gestao_for_merge.columns]
+            if _identity_overlap:
+                df_gestao_for_merge = df_gestao_for_merge.drop(columns=_identity_overlap)
+
             logger.info("Realizando merge (cruzamento) usando chaves %s (%d registros únicos na Gestão)...", merge_keys, len(df_gestao_for_merge))
             _original_len = len(df_consolidado)  # capture antes do merge
             
