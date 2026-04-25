@@ -40,6 +40,9 @@ ENRICHMENT_KEY = "No. UC"
 # Código único da unidade negociada vindo da base Balanço Energético.
 ID_UC_NEGOCIADA_COL = "id_uc_negociada"
 
+# Coluna técnica: instalação original vinda da Gestão de Cobrança.
+PORTAL_UC_COL = "_portal_uc"
+
 # Coluna para número da conta (Gestão de Cobrança)
 ACCOUNT_NUMBER_COL = "Número da conta"
 

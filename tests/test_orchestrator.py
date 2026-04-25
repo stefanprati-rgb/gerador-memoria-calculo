@@ -12,6 +12,7 @@ from logic.core.mapping import (
     PARENT_ROW_FLAG,
     GROUPING_MODE_CNPJ,
     GROUPING_MODE_NONE,
+    PORTAL_UC_COL,
 )
 
 
@@ -342,6 +343,7 @@ class TestPortalOnlyGeneration:
             "Referencia": ["11/2025", "11/2025"],
             "No. UC": ["TEC-A", "TEC-B"],
             "UC p Rateio": ["PORTAL-001", "PORTAL-002"],
+            PORTAL_UC_COL: ["PORTAL-001", "PORTAL-002"],
             "Razao Social": ["Cliente Y", "Cliente Y"],
             "Distribuidora": ["CPFL", "CPFL"],
             "Fonte dos Dados": ["Fatura", "Fatura"],
@@ -378,6 +380,52 @@ class TestPortalOnlyGeneration:
         assert result == b"xlsx-bytes"
         generated_df = captured["df"]
         assert set(generated_df["No. UC"].dropna().astype(str)) == {"PORTAL-001", "PORTAL-002"}
+
+    def test_generate_preserva_uc_portal_quando_merge_foi_por_no_uc(self, sample_base_xlsx, sample_template_xlsx, monkeypatch):
+        orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)
+
+        source_df = pd.DataFrame({
+            "Referencia": ["11/2025"],
+            "No. UC": ["3806613"],
+            "UC p Rateio": ["7064837847"],
+            PORTAL_UC_COL: ["3806613"],
+            "Razao Social": ["Cliente Portal"],
+            "Distribuidora": ["CPFL"],
+            "Fonte dos Dados": ["Fatura"],
+            "Número da conta": ["C1"],
+            "Valor Enviado Emissão": [1068.36],
+            "Valor_gestao": [1444.04],
+            "Tarifa Raizen": [1.0],
+            "Custo c/ GD": [1.0],
+            "Custo s/ GD": [2.0],
+            "Ganho total Padrão": [1.0],
+            "CPF/CNPJ": ["1"],
+            "Cred. Consumido Raizen": [1.0],
+            "Desconto Contratado": ["10%"],
+            "Vencimento": ["15-05-2026"],
+            "Status Pos-Faturamento": ["Em aberto"],
+        })
+
+        monkeypatch.setattr(orch.reader, "filter_data", lambda *args, **kwargs: source_df.copy())
+
+        captured = {}
+
+        class _FakeWriter:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def generate_bytes(self, data_to_insert, *_args, **_kwargs):
+                captured["df"] = data_to_insert.copy()
+                return b"xlsx-bytes"
+
+        monkeypatch.setattr("logic.services.orchestrator.TemplateExcelWriter", _FakeWriter)
+
+        result = orch.generate(["Cliente Portal"], ["11/2025"], grouping_mode="none")
+
+        assert result == b"xlsx-bytes"
+        generated_df = captured["df"]
+        assert generated_df.iloc[0]["No. UC"] == "3806613"
+        assert generated_df.iloc[0]["Valor Enviado Emissão"] == pytest.approx(1444.04)
 
     def test_generate_usa_alias_alfanumerico_quando_uc_base_for_rateio(self, sample_base_xlsx, sample_template_xlsx, monkeypatch):
         orch = Orchestrator(sample_base_xlsx, sample_template_xlsx)

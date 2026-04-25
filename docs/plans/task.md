@@ -1,3 +1,3 @@
 | Task ID | Task Name | Status |
 | :--- | :--- | :--- |
-| 1 | Include negotiated UC id in generated calculation memories | done |
+| 1 | Reconcile portal open charges with generated calculation memory | done |

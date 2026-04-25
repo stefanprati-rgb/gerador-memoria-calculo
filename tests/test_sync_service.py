@@ -23,7 +23,7 @@ from logic.services.sync_service import (
     _read_parquet_safe,
     _save_parquet_safe
 )
-from logic.core.mapping import ID_UC_NEGOCIADA_COL
+from logic.core.mapping import HIERARCHY_KEY_COL, ID_UC_NEGOCIADA_COL, PORTAL_UC_COL
 
 
 @pytest.fixture(autouse=True)
@@ -207,6 +207,7 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_di
             df = mock_balanco_df.copy()
             df["Status Pos-Faturamento"] = ["1", "2", "3", "4"]
             df[ID_UC_NEGOCIADA_COL] = ["001", "002", "003", "004"]
+            df[HIERARCHY_KEY_COL] = ["D7061486182", "D7037736518", "3806613", "7064837847"]
             self.df = df
             
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
@@ -218,6 +219,126 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_di
     assert df_result["Status Pos-Faturamento"].dtype == object or df_result["Status Pos-Faturamento"].dtype.name == 'string'
     assert isinstance(df_result["Status Pos-Faturamento"].iloc[0], str)
     assert df_result[ID_UC_NEGOCIADA_COL].tolist() == ["001", "002", "003", "004"]
+    assert df_result[HIERARCHY_KEY_COL].tolist()[0] == "D7061486182"
+
+
+def test_sync_service_appends_portal_charge_missing_from_balanco(isolated_cache_dirs, monkeypatch):
+    """Cobranças existentes só na Gestão devem entrar no cache para a memória não subcontar o portal."""
+    parquet_path = isolated_cache_dirs["parquet"]
+    import logic.services.sync_service as sync
+
+    balanco_df = pd.DataFrame({
+        ID_UC_NEGOCIADA_COL: ["BASE-1"],
+        "Referencia": ["01/11/2025"],
+        "No. UC": ["1001"],
+        "CPF/CNPJ": ["1111"],
+        "Razao Social": ["Cliente Portal"],
+        "Distribuidora": ["Dist1"],
+        "Cred. Consumido Raizen": [100],
+        "Desconto Contratado": [10],
+        "Status Pos-Faturamento": ["Em aberto"],
+        "Valor Enviado Emissão": [100],
+        "Tarifa Raizen": [0.8],
+        "Custo c/ GD": [90],
+        "Custo s/ GD": [100],
+        "Ganho total Padrão": [10],
+        "Excecao Fat.": [""],
+        HIERARCHY_KEY_COL: [""],
+        "Main": [""],
+        "No. IBM": [""],
+        "Fonte dos Dados": ["Fatura"],
+    })
+
+    class MockExcelReader:
+        def __init__(self, *args, **kwargs):
+            self.df = balanco_df.copy()
+
+    monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
+
+    gestao_df = pd.DataFrame({
+        "Instalação": ["1001", "4000621352"],
+        "Nome": ["Cliente Portal", "Cliente Portal"],
+        "CNPJ/CPF": ["1111", "1111"],
+        "Distribuidora": ["Dist1", "Dist1"],
+        "Mês de Referência": ["11-2025", "11-2025"],
+        "Vencimento": ["15-05-2026", "15-05-2026"],
+        "Status": ["Em aberto", "Em aberto"],
+        "Valor da cobrança R$": ["100,00", "170,71"],
+        "Número da conta ": ["C1", "C2"],
+        "Cancelada": ["Não", "Não"],
+    })
+    gestao_io = io.BytesIO()
+    gestao_df.to_excel(gestao_io, index=False, engine="openpyxl")
+
+    success, _report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_io.getvalue())
+
+    assert success is True
+    df_result = pd.read_parquet(parquet_path, engine="fastparquet")
+    portal_only = df_result.loc[df_result["No. UC"].astype(str) == "4000621352"].iloc[0]
+    assert portal_only[PORTAL_UC_COL] == "4000621352"
+    assert portal_only["Valor_gestao"] == pytest.approx(170.71)
+    assert portal_only["Status Pos-Faturamento"] == "Em aberto"
+
+
+def test_sync_service_backfills_identity_for_portal_rows_with_blank_client(isolated_cache_dirs, monkeypatch):
+    """Linhas técnicas sem cliente devem herdar metadados de outra linha da mesma instalação portal."""
+    parquet_path = isolated_cache_dirs["parquet"]
+    import logic.services.sync_service as sync
+
+    balanco_df = pd.DataFrame({
+        ID_UC_NEGOCIADA_COL: [pd.NA, "BASE-1"],
+        "Referencia": ["01/11/2025", "01/01/2026"],
+        "No. UC": ["D7061486182", "831547813"],
+        "CPF/CNPJ": [pd.NA, "1111"],
+        "Razao Social": [pd.NA, "Cliente Portal"],
+        "Distribuidora": [pd.NA, "Dist1"],
+        "Cred. Consumido Raizen": [pd.NA, 100],
+        "Desconto Contratado": [pd.NA, 10],
+        "Status Pos-Faturamento": [pd.NA, "Em aberto"],
+        "Valor Enviado Emissão": [0, 100],
+        "Tarifa Raizen": [pd.NA, 0.8],
+        "Custo c/ GD": [pd.NA, 90],
+        "Custo s/ GD": [pd.NA, 100],
+        "Ganho total Padrão": [pd.NA, 10],
+        "Excecao Fat.": ["", ""],
+        HIERARCHY_KEY_COL: ["D7061486182", "D7061486182"],
+        "Main": ["N", "Y"],
+        "No. IBM": ["", ""],
+        "Fonte dos Dados": [pd.NA, "Fatura"],
+    })
+
+    class MockExcelReader:
+        def __init__(self, *args, **kwargs):
+            self.df = balanco_df.copy()
+
+    monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
+
+    gestao_df = pd.DataFrame({
+        "Instalação": ["D7061486182", "D7061486182"],
+        "Nome": ["Cliente Portal", "Cliente Portal"],
+        "CNPJ/CPF": ["1111", "1111"],
+        "Distribuidora": ["Dist1", "Dist1"],
+        "Mês de Referência": ["11-2025", "01-2026"],
+        "Vencimento": ["15-05-2026", "15-05-2026"],
+        "Status": ["Em aberto", "Em aberto"],
+        "Valor da cobrança R$": ["1670,09", "1223,97"],
+        "Número da conta ": ["C1", "C2"],
+        "Cancelada": ["Não", "Não"],
+    })
+    gestao_io = io.BytesIO()
+    gestao_df.to_excel(gestao_io, index=False, engine="openpyxl")
+
+    success, _report = sync.build_consolidated_cache_from_uploads(b"fake", gestao_io.getvalue())
+
+    assert success is True
+    df_result = pd.read_parquet(parquet_path, engine="fastparquet")
+    valor_series = pd.to_numeric(df_result["Valor_gestao"], errors="coerce")
+    target = df_result.loc[
+        (df_result[PORTAL_UC_COL].astype(str) == "D7061486182")
+        & ((valor_series - 1670.09).abs() < 0.01)
+    ].iloc[0]
+    assert target["Razao Social"] == "Cliente Portal"
+    assert target["CPF/CNPJ"] == "1111"
 
 
 def test_cancelado_nao_contamina_ativo(mock_balanco_df, isolated_cache_dirs, monkeypatch):

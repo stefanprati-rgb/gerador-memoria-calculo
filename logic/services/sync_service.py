@@ -9,7 +9,14 @@ import pandas as pd
 import json
 from datetime import datetime
 from logic.adapters.excel_adapter import BaseExcelReader
-from logic.core.mapping import ID_UC_NEGOCIADA_COL
+from logic.core.mapping import (
+    ACCOUNT_NUMBER_COL,
+    CLASSIFICATION_SOURCE_COL,
+    ENRICHMENT_KEY,
+    HIERARCHY_KEY_COL,
+    ID_UC_NEGOCIADA_COL,
+    PORTAL_UC_COL,
+)
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -31,6 +38,7 @@ _TEXT_COLUMNS = {
     "Razao Social", "Distribuidora", "Desconto Contratado",
     "Status Pos-Faturamento", "No. UC", "CPF/CNPJ", "Referencia",
     "Excecao Fat.", "Vencimento", "Número da conta", ID_UC_NEGOCIADA_COL,
+    HIERARCHY_KEY_COL, PORTAL_UC_COL,
 }
 
 
@@ -127,6 +135,9 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             header_map = {str(c).strip().lower(): str(c) for c in gestao_headers}
 
             uc_col = header_map.get("instalação", header_map.get("uc", header_map.get("no. uc")))
+            nome_col = header_map.get("nome", header_map.get("razão social", header_map.get("razao social")))
+            doc_col = header_map.get("cnpj/cpf", header_map.get("cpf/cnpj"))
+            dist_col = header_map.get("distribuidora")
             venc_col = header_map.get("vencimento", header_map.get("data de vencimento"))
             status_col = header_map.get("status", header_map.get("status financeiro"))
             # Colunas financeiras da Gestão para o Grupo 1
@@ -152,6 +163,9 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             # Coletar nomes originais para leitura (pandas precisa do nome exato, com espaços)
             cols_to_read = []
             if uc_col: cols_to_read.append(uc_col)
+            if nome_col: cols_to_read.append(nome_col)
+            if doc_col: cols_to_read.append(doc_col)
+            if dist_col: cols_to_read.append(dist_col)
             if venc_col: cols_to_read.append(venc_col)
             if status_col: cols_to_read.append(status_col)
             if base_calc_col: cols_to_read.append(base_calc_col)
@@ -172,9 +186,31 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                 if s.endswith(".0"): s = s[:-2]
                 s = ''.join(filter(str.isdigit, s))
                 return s.lstrip('0')
+
+            def normalize_portal_uc(val):
+                if pd.isna(val):
+                    return pd.NA
+                s = str(val).strip()
+                if s.endswith(".0"):
+                    s = s[:-2]
+                return s if s and s.lower() not in {"nan", "none"} else pd.NA
+
+            def normalize_doc(val):
+                if pd.isna(val):
+                    return ""
+                return "".join(ch for ch in str(val) if ch.isdigit())
+
+            def normalize_identity_key(val):
+                if pd.isna(val):
+                    return ""
+                s = str(val).strip()
+                if s.endswith(".0"):
+                    s = s[:-2]
+                return "".join(ch for ch in s if ch.isalnum()).upper()
             
             # 2. Normalizar e colher conjunto total de UCs na gestão para o relatório
             df_gestao["No. UC_norm"] = df_gestao[uc_col].apply(normalize_uc)
+            df_gestao[PORTAL_UC_COL] = df_gestao[uc_col].apply(normalize_portal_uc)
             all_gestao_ucs = set(df_gestao["No. UC_norm"].unique())
 
             def parse_ref(val):
@@ -186,6 +222,9 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
 
             # 3. Normalizar chaves em ambas as bases para detecção de cancelados
             df_consolidado["No. UC_norm"] = df_consolidado["No. UC"].apply(normalize_uc)
+            base_docs = set()
+            if "CPF/CNPJ" in df_consolidado.columns:
+                base_docs = set(df_consolidado["CPF/CNPJ"].apply(normalize_doc).replace("", pd.NA).dropna())
             
             ref_merge_col = "Referencia_merge"
             if ref_col:
@@ -208,7 +247,6 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             if status_col: rename_dict[status_col] = "Status Pos-Faturamento_gestao"
             if valor_cob_col: rename_dict[valor_cob_col] = "Valor_gestao"
             if base_calc_col: rename_dict[base_calc_col] = "Base_gestao"
-            from logic.core.mapping import ACCOUNT_NUMBER_COL
             if conta_col: rename_dict[conta_col] = ACCOUNT_NUMBER_COL
             if pag_col: rename_dict[pag_col] = "Data de Pagamento"
             
@@ -277,7 +315,6 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
             _original_len = len(df_consolidado)  # capture antes do merge
             
             # Segurança: Se a coluna de conta já existir na base de Balanço (vazia), dropar antes do merge para evitar _x/_y
-            from logic.core.mapping import ACCOUNT_NUMBER_COL
             if ACCOUNT_NUMBER_COL in df_consolidado.columns:
                 df_consolidado.drop(columns=[ACCOUNT_NUMBER_COL], inplace=True)
                 
@@ -308,6 +345,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                             ACCOUNT_NUMBER_COL,
                             "Data de Pagamento",
                             "_is_duplicate_gestao",
+                            PORTAL_UC_COL,
                         ]
                         for col in fill_cols:
                             if col in df_consolidado.columns and col in alt_merged.columns:
@@ -319,6 +357,80 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                                 else:
                                     replace_mask = current.isna()
                                 df_consolidado.loc[missing_after_primary, col] = current.where(~replace_mask, incoming)
+
+            # Cobranças que existem na Gestão, pertencem a documentos já presentes
+            # no Balanço, mas não têm linha técnica correspondente, devem entrar
+            # no cache para a memória não subcontar o portal.
+            if base_docs and doc_col and ref_merge_col in df_gestao.columns:
+                base_match_keys = set()
+                base_key_cols = ["No. UC_norm"]
+                if HIERARCHY_KEY_COL in df_consolidado.columns:
+                    rateio_key_col = "_rateio_norm_for_portal_only"
+                    df_consolidado[rateio_key_col] = df_consolidado[HIERARCHY_KEY_COL].apply(normalize_uc)
+                    base_key_cols.append(rateio_key_col)
+
+                for key_col in base_key_cols:
+                    for _, row in df_consolidado[[key_col, ref_merge_col]].dropna().iterrows():
+                        key = str(row[key_col]).strip()
+                        if key:
+                            base_match_keys.add((key, row[ref_merge_col]))
+
+                portal_rows = []
+                for _, row in df_gestao.iterrows():
+                    doc_norm = normalize_doc(row.get(doc_col))
+                    portal_key = (str(row.get("No. UC_norm", "")).strip(), row.get(ref_merge_col))
+                    if not doc_norm or doc_norm not in base_docs or portal_key in base_match_keys:
+                        continue
+
+                    valor = row.get("Valor_gestao", pd.NA)
+                    portal_rows.append({
+                        ENRICHMENT_KEY: row.get(PORTAL_UC_COL),
+                        PORTAL_UC_COL: row.get(PORTAL_UC_COL),
+                        HIERARCHY_KEY_COL: pd.NA,
+                        "Referencia": row.get(ref_merge_col),
+                        "CPF/CNPJ": row.get(doc_col),
+                        "Razao Social": row.get(nome_col) if nome_col else pd.NA,
+                        "Distribuidora": row.get(dist_col) if dist_col else pd.NA,
+                        CLASSIFICATION_SOURCE_COL: "Fatura",
+                        "Main": "Y",
+                        "Valor_gestao": valor,
+                        "Valor Enviado Emissão": valor,
+                        "Vencimento": row.get("Vencimento", pd.NA),
+                        "Status Pos-Faturamento_gestao": row.get("Status Pos-Faturamento_gestao", pd.NA),
+                        "Base_gestao": row.get("Base_gestao", pd.NA),
+                        ACCOUNT_NUMBER_COL: row.get(ACCOUNT_NUMBER_COL, pd.NA),
+                        "Data de Pagamento": row.get("Data de Pagamento", pd.NA),
+                    })
+
+                if portal_rows:
+                    df_consolidado = pd.concat([df_consolidado, pd.DataFrame(portal_rows)], ignore_index=True, sort=False)
+
+            identity_cols = ["Razao Social", "CPF/CNPJ", "Distribuidora", ID_UC_NEGOCIADA_COL]
+            key_cols = [c for c in [PORTAL_UC_COL, HIERARCHY_KEY_COL, ENRICHMENT_KEY] if c in df_consolidado.columns]
+            for identity_col in identity_cols:
+                if identity_col not in df_consolidado.columns:
+                    continue
+
+                lookup = {}
+                for _, row in df_consolidado.iterrows():
+                    value = row.get(identity_col)
+                    if pd.isna(value) or str(value).strip() == "":
+                        continue
+                    for key_col in key_cols:
+                        key = normalize_identity_key(row.get(key_col))
+                        if key and key not in lookup:
+                            lookup[key] = value
+
+                if not lookup:
+                    continue
+
+                missing_identity = df_consolidado[identity_col].isna() | (df_consolidado[identity_col].astype(str).str.strip() == "")
+                for idx in df_consolidado.index[missing_identity]:
+                    for key_col in key_cols:
+                        key = normalize_identity_key(df_consolidado.at[idx, key_col])
+                        if key in lookup:
+                            df_consolidado.at[idx, identity_col] = lookup[key]
+                            break
 
             # Normalizar nomes de colunas com trailing/leading spaces após o merge
             df_consolidado.columns = df_consolidado.columns.str.strip()
@@ -348,7 +460,6 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                 df_consolidado.rename(columns={"Status Pos-Faturamento_gestao": "Status Pos-Faturamento"}, inplace=True)
             
             # 7.1 Limpeza específica da coluna de Conta (remover .0 e forçar string)
-            from logic.core.mapping import ACCOUNT_NUMBER_COL
             if ACCOUNT_NUMBER_COL in df_consolidado.columns:
                 df_consolidado[ACCOUNT_NUMBER_COL] = df_consolidado[ACCOUNT_NUMBER_COL].apply(
                     lambda x: str(int(float(x))) if pd.notna(x) and str(x).endswith('.0') else str(x) if pd.notna(x) else pd.NA
@@ -397,7 +508,7 @@ def _process_dataframes(balanco_path: str, gestao_bytes: bytes | None, gestao_pa
                         json.dump(report, f, indent=2, ensure_ascii=False)
                 except: pass
 
-            drop_aux = ["No. UC_norm", "Referencia_merge", left_merge_uc_col, "_merge_uc_rateio_norm"]
+            drop_aux = ["No. UC_norm", "Referencia_merge", left_merge_uc_col, "_merge_uc_rateio_norm", "_rateio_norm_for_portal_only"]
             df_consolidado.drop(columns=[c for c in drop_aux if c in df_consolidado.columns], inplace=True)
         except ValueError as e:
             # Re-raise erros de validação propositais

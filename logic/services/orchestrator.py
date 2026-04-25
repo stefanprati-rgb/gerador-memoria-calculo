@@ -28,6 +28,7 @@ from logic.core.mapping import (
     GROUPING_MODE_DISTRIBUTOR,
     GROUPING_MODE_CNPJ,
     GROUPING_MODE_NONE,
+    PORTAL_UC_COL,
 )
 from logic.core.cleaning import enforce_payment_rules
 from logic.core.dates import parse_reference_period
@@ -318,7 +319,9 @@ class Orchestrator:
         # Captura aliases de instalação antes dos filtros de valor da Gestão.
         raw = alias_lookup_df.copy() if alias_lookup_df is not None else df.copy()
         raw["_uc_base_raw"] = raw[ENRICHMENT_KEY].apply(_normalize_uc_text)
-        if HIERARCHY_KEY_COL in raw.columns:
+        if PORTAL_UC_COL in raw.columns:
+            raw["_uc_portal_raw"] = raw[PORTAL_UC_COL].apply(_normalize_uc_text)
+        elif HIERARCHY_KEY_COL in raw.columns:
             raw["_uc_portal_raw"] = raw[HIERARCHY_KEY_COL].apply(_normalize_uc_text)
         else:
             raw["_uc_portal_raw"] = pd.NA
@@ -343,7 +346,9 @@ class Orchestrator:
 
         # A UC exibida no portal pode vir de "UC p Rateio" para alguns clientes.
         work["_uc_base"] = work[ENRICHMENT_KEY].apply(_normalize_uc_text)
-        if HIERARCHY_KEY_COL in work.columns:
+        if PORTAL_UC_COL in work.columns:
+            work["_uc_portal"] = work[PORTAL_UC_COL].apply(_normalize_uc_text)
+        elif HIERARCHY_KEY_COL in work.columns:
             work["_uc_portal"] = work[HIERARCHY_KEY_COL].apply(_normalize_uc_text)
         else:
             work["_uc_portal"] = pd.NA
