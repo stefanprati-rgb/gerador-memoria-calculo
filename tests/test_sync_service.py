@@ -23,6 +23,7 @@ from logic.services.sync_service import (
     _read_parquet_safe,
     _save_parquet_safe
 )
+from logic.core.mapping import ID_UC_NEGOCIADA_COL
 
 
 @pytest.fixture(autouse=True)
@@ -68,6 +69,7 @@ def isolated_cache_dirs(tmp_path, monkeypatch):
 def mock_balanco_df():
     """Simula a aba Balanco Operacional com todas as colunas obrigatórias."""
     return pd.DataFrame({
+        ID_UC_NEGOCIADA_COL: ["001", "002", "003", "004"],
         "Referencia": ["01/01/2026", "01/02/2026", "01/01/2026", "01/02/2026"],
         "No. UC": ["42074274.0", "42074274.0", "5143128.0", "4000476449.0"],
         "CPF/CNPJ": ["1111", "1111", "2222", "3333"],
@@ -204,6 +206,7 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_di
         def __init__(self, *args, **kwargs):
             df = mock_balanco_df.copy()
             df["Status Pos-Faturamento"] = ["1", "2", "3", "4"]
+            df[ID_UC_NEGOCIADA_COL] = ["001", "002", "003", "004"]
             self.df = df
             
     monkeypatch.setattr(sync, "BaseExcelReader", MockExcelReader)
@@ -214,6 +217,7 @@ def test_sync_service_protected_columns_dtype(mock_balanco_df, isolated_cache_di
     df_result = pd.read_parquet(parquet_path, engine="fastparquet")
     assert df_result["Status Pos-Faturamento"].dtype == object or df_result["Status Pos-Faturamento"].dtype.name == 'string'
     assert isinstance(df_result["Status Pos-Faturamento"].iloc[0], str)
+    assert df_result[ID_UC_NEGOCIADA_COL].tolist() == ["001", "002", "003", "004"]
 
 
 def test_cancelado_nao_contamina_ativo(mock_balanco_df, isolated_cache_dirs, monkeypatch):

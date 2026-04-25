@@ -20,6 +20,7 @@ from logic.core.mapping import (
     OPTIONAL_BASE_COLUMNS,
     ENRICHMENT_KEY,
     ACCOUNT_NUMBER_COL,
+    ID_UC_NEGOCIADA_COL,
     SEPARATOR_ROW_FLAG,
     CLASSIFICATION_COL,
     CHILD_ROW_FLAG,
@@ -256,7 +257,7 @@ class TemplateExcelWriter:
     DOCUMENT_COLUMNS = {"CPF/CNPJ"}
 
     # Colunas que devem ser tratadas como texto puro
-    TEXT_COLUMNS = {ACCOUNT_NUMBER_COL, ENRICHMENT_KEY, "Referencia"}
+    TEXT_COLUMNS = {ACCOUNT_NUMBER_COL, ENRICHMENT_KEY, ID_UC_NEGOCIADA_COL, "Referencia"}
 
     # Mapeamento reverso para localizar colunas no template físico (mc.xlsx) que ainda usam nomes antigos
     LEGACY_HEADER_MAP = {

@@ -15,6 +15,7 @@ def sample_base_df():
     Inclui linhas com e sem agrupamento para testar ambos os cenários.
     """
     return pd.DataFrame({
+        "id_uc_negociada": ["ID-UC-001", "ID-UC-002", "ID-UC-003", "ID-UC-004", "ID-UC-005", "ID-UC-006"],
         "Referencia": ["2026-01-01", "2026-01-01", "2026-02-01", "2026-01-01", "2026-01-01", "2026-01-01"],
         "No. UC": ["UC001", "UC002", "UC003", "UC004", "UC005", "UC006"],
         "CPF/CNPJ": ["11111111000101", "22222222000102", "11111111000101", "33333333000103", "33333333000103", "44444444000104"],

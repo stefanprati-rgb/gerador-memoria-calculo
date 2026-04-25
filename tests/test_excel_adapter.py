@@ -17,6 +17,10 @@ from logic.adapters.excel_adapter import (
 from logic.core.mapping import COLUMN_MAPPING, PARENT_ROW_FLAG
 
 
+def _mapped_column_index(logical_name: str) -> int:
+    return list(COLUMN_MAPPING.keys()).index(logical_name) + 1
+
+
 class TestBaseExcelReader:
     """Testes do leitor de planilha com detecção dinâmica de header."""
 
@@ -151,6 +155,25 @@ class TestTemplateExcelWriter:
         assert isinstance(result, bytes)
         assert len(result) > 0
 
+    def test_id_uc_negociada_sai_como_primeira_coluna_texto(self, sample_template_xlsx):
+        """O código único da unidade deve abrir a memória e preservar exatamente o valor da base."""
+        df = pd.DataFrame({
+            "id_uc_negociada": ["001234567890"],
+            "Referencia": ["2026-01-01"],
+            "No. UC": ["UC001"],
+            PARENT_ROW_FLAG: [False],
+        })
+
+        writer = TemplateExcelWriter(sample_template_xlsx)
+        result = writer.generate_bytes(df, COLUMN_MAPPING)
+
+        wb = openpyxl.load_workbook(io.BytesIO(result))
+        ws = wb.active
+
+        assert ws.cell(row=1, column=1).value == "Código Único da Unidade"
+        assert ws.cell(row=2, column=1).value == "001234567890"
+        assert ws.cell(row=2, column=1).number_format == "@"
+
     def test_formatacao_fatura_pai(self, sample_template_xlsx):
         """Linhas de Fatura Pai devem receber formatação diferenciada (negrito + fundo)."""
         df = pd.DataFrame({
@@ -177,13 +200,15 @@ class TestTemplateExcelWriter:
         wb = openpyxl.load_workbook(io.BytesIO(result))
         ws = wb.active
 
+        razao_social_col = _mapped_column_index("Razao Social")
+
         # Linha 2 = Fatura Pai (deve estar em negrito)
-        parent_cell = ws.cell(row=2, column=5)  # coluna Razao Social
+        parent_cell = ws.cell(row=2, column=razao_social_col)
         assert parent_cell.value == "TOTAL AGRUPADO - Cliente Alpha"
         assert parent_cell.font.bold is True
 
         # Linha 3 = UC Filha (não deve estar em negrito via parent_font)
-        child_cell = ws.cell(row=3, column=5)
+        child_cell = ws.cell(row=3, column=razao_social_col)
         assert child_cell.value == "Cliente Alpha"
     def test_renomeacao_headers_legados(self, tmp_path):
         """Deve detectar nomes antigos no template e convertê-los para os nomes da fonte no resultado."""
@@ -226,9 +251,8 @@ class TestTemplateExcelWriter:
         wb = openpyxl.load_workbook(io.BytesIO(result))
         ws = wb.active
         
-        # O valor no Excel deve ser 0
-        # Tarifa Raizen está na coluna 12 no COLUMN_MAPPING
-        assert ws.cell(row=2, column=12).value == 0.0
+        tarifa_col = _mapped_column_index("Tarifa Raizen")
+        assert ws.cell(row=2, column=tarifa_col).value == 0.0
 
     def test_formatacao_referencia_mes_ano(self, sample_template_xlsx):
         """A coluna Referencia deve ser formatada como mês/ano (MM/YYYY)."""
@@ -288,8 +312,7 @@ class TestTemplateExcelWriter:
         wb = openpyxl.load_workbook(io.BytesIO(result))
         ws = wb.active
         
-        # No. UC está na coluna 2 no COLUMN_MAPPING
-        uc_cell = ws.cell(row=2, column=2)
+        uc_cell = ws.cell(row=2, column=_mapped_column_index("No. UC"))
         assert uc_cell.comment is not None
         assert "Dado ausente" in uc_cell.comment.text
 

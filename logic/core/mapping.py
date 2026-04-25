@@ -37,6 +37,9 @@ HIERARCHY_PARENT_VALUE = "Y"
 # Chave usada para enriquecimento/vínculo de dados externos
 ENRICHMENT_KEY = "No. UC"
 
+# Código único da unidade negociada vindo da base Balanço Energético.
+ID_UC_NEGOCIADA_COL = "id_uc_negociada"
+
 # Coluna para número da conta (Gestão de Cobrança)
 ACCOUNT_NUMBER_COL = "Número da conta"
 
@@ -77,6 +80,7 @@ CLASSIFICATION_COL = "Classificação"
 # --- MAPEAMENTO BASE → TEMPLATE ---
 COLUMN_MAPPING = {
     # 'Coluna na base Balanço Energético': 'Coluna no destino'
+    ID_UC_NEGOCIADA_COL: "Código Único da Unidade",
     "Referencia": "Mês de Referência",
     "No. UC": "Instalação (UC)",
     ACCOUNT_NUMBER_COL: "Nº Conta",

@@ -498,11 +498,14 @@ class Orchestrator:
         generated_count = 0
         with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
             for group in groups:
-                excel_bytes = self.generate(group.get('clients', []), group.get('periods', []), incomplete_filter=incomplete_filter, grouping_mode=grouping_mode, include_child_rows=include_child_rows, enrichment_df=enrichment_df, somente_pendencias=somente_pendencias, tipo_apresentacao=tipo_apresentacao, incluir_resumo=incluir_resumo, separar_auditoria=separar_auditoria, sort_by=sort_by)
+                clients = group.get('clients', []) or []
+                periods = group.get('periods', []) or []
+                if not clients or not periods:
+                    continue
+
+                excel_bytes = self.generate(clients, periods, incomplete_filter=incomplete_filter, grouping_mode=grouping_mode, include_child_rows=include_child_rows, enrichment_df=enrichment_df, somente_pendencias=somente_pendencias, tipo_apresentacao=tipo_apresentacao, incluir_resumo=incluir_resumo, separar_auditoria=separar_auditoria, sort_by=sort_by)
                 if excel_bytes:
                     raw_name = str(group.get('name', 'Sem_Nome') or 'Sem_Nome')
-                    clients = group.get('clients', []) or []
-                    periods = group.get('periods', []) or []
 
                     if _is_generic_group_name(raw_name):
                         if len(clients) == 1:

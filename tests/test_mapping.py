@@ -4,6 +4,7 @@ Testes para o mapeamento de colunas e constantes de agrupamento.
 
 from logic.core.mapping import (
     COLUMN_MAPPING,
+    ID_UC_NEGOCIADA_COL,
     get_base_columns,
     get_template_columns,
     GROUPING_FLAG_COL,
@@ -43,6 +44,8 @@ class TestColumnMapping:
     def test_colunas_base_esperadas(self):
         """Colunas essenciais da nova base devem estar no mapeamento."""
         base_cols = get_base_columns()
+        assert base_cols[0] == ID_UC_NEGOCIADA_COL
+        assert ID_UC_NEGOCIADA_COL in base_cols
         assert "No. UC" in base_cols
         assert "CPF/CNPJ" in base_cols
         assert "Razao Social" in base_cols
@@ -52,6 +55,7 @@ class TestColumnMapping:
     def test_colunas_template_esperadas(self):
         """Colunas essenciais do template devem estar no mapeamento."""
         template_cols = get_template_columns()
+        assert template_cols[0] == "Código Único da Unidade"
         assert "Instalação (UC)" in template_cols
         assert "CPF/CNPJ" in template_cols
         assert "Cliente (Razão Social)" in template_cols

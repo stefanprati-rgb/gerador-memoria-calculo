@@ -9,6 +9,7 @@ import pandas as pd
 import json
 from datetime import datetime
 from logic.adapters.excel_adapter import BaseExcelReader
+from logic.core.mapping import ID_UC_NEGOCIADA_COL
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ GESTAO_LOCAL = os.path.join(CACHE_DIR, "gd_gestao.xlsx")
 _TEXT_COLUMNS = {
     "Razao Social", "Distribuidora", "Desconto Contratado",
     "Status Pos-Faturamento", "No. UC", "CPF/CNPJ", "Referencia",
-    "Excecao Fat.", "Vencimento", "Número da conta",
+    "Excecao Fat.", "Vencimento", "Número da conta", ID_UC_NEGOCIADA_COL,
 }
 
 
